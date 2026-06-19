@@ -5,6 +5,7 @@ import { ScrollView } from "std-widgets.slint";
 component PopupRow inherits Rectangle {
     in property <string> initial;
     in property <color> tint;
+    in property <image> photo;
     in property <string> title;
     in property <string> subtitle;
     in property <bool> selected;
@@ -16,7 +17,10 @@ component PopupRow inherits Rectangle {
         padding-left: 8px;
         padding-right: 8px;
         spacing: 10px;
-        Avatar { initial: root.initial; tint: root.tint; size: 32px; }
+        VerticalLayout {
+            alignment: center;
+            Avatar { initial: root.initial; tint: root.tint; photo: root.photo; size: 32px; }
+        }
         VerticalLayout {
             alignment: center;
             spacing: 1px;
@@ -39,6 +43,10 @@ component QuickSwitch inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <string> kind; // "instance" | "account"
+    in property <bool> show-avatar;
+    in property <string> avatar-initial;
+    in property <color> avatar-tint;
+    in property <image> avatar-photo;
     horizontal-stretch: 1;
     height: 56px;
     border-radius: Theme.radius-sm;
@@ -48,9 +56,18 @@ component QuickSwitch inherits Rectangle {
     animate background { duration: 100ms; }
 
     HorizontalLayout {
-        padding-left: 14px;
+        padding-left: 12px;
         padding-right: 14px;
-        spacing: 4px;
+        spacing: 10px;
+        if root.show-avatar : VerticalLayout {
+            alignment: center;
+            Avatar {
+                initial: root.avatar-initial;
+                tint: root.avatar-tint;
+                photo: root.avatar-photo;
+                size: 34px;
+            }
+        }
         VerticalLayout {
             alignment: center;
             spacing: 2px;
@@ -70,7 +87,12 @@ component QuickSwitch inherits Rectangle {
         x: 0;
         y: parent.height + 4px;
         width: root.width;
+        // Size the popup to its content (capped), so the opaque background and
+        // hit area actually cover the rows instead of overflowing the page.
+        height: min(280px, list.preferred-height);
         Rectangle {
+            width: 100%;
+            height: 100%;
             background: Theme.surface;
             border-radius: Theme.radius;
             border-width: 1px;
@@ -78,9 +100,12 @@ component QuickSwitch inherits Rectangle {
             drop-shadow-color: #00000066;
             drop-shadow-blur: 20px;
             drop-shadow-offset-y: 6px;
+            clip: true;
             ScrollView {
-                height: min(260px, list.preferred-height);
+                width: 100%;
+                height: 100%;
                 list := VerticalLayout {
+                    width: 100%;
                     padding: 6px;
                     spacing: 2px;
 
@@ -106,6 +131,7 @@ component QuickSwitch inherits Rectangle {
                         for acc in Logic.accounts : PopupRow {
                             initial: acc.initial;
                             tint: acc.avatar-color;
+                            photo: acc.avatar;
                             title: acc.username;
                             subtitle: acc.kind;
                             selected: acc.active;
@@ -130,10 +156,13 @@ export component PlayView inherits VerticalLayout {
             spacing: 20px;
 
             // Instance identity
-            Avatar {
-                initial: Logic.active-instance-name == "" ? "?" : Logic.active-instance-initial;
-                tint: Logic.active-instance-name == "" ? Theme.text-dim : Logic.active-instance-color;
-                size: 72px;
+            VerticalLayout {
+                alignment: center;
+                Avatar {
+                    initial: Logic.active-instance-name == "" ? "?" : Logic.active-instance-initial;
+                    tint: Logic.active-instance-name == "" ? Theme.text-dim : Logic.active-instance-color;
+                    size: 72px;
+                }
             }
 
             VerticalLayout {
@@ -167,6 +196,7 @@ export component PlayView inherits VerticalLayout {
                         initial: Logic.active-account-initial;
                         tint: Logic.active-account-color;
                         size: 22px;
+                        photo: Logic.active-account-avatar;
                     }
                     Text {
                         text: Logic.active-account-name == "" ? "Not signed in" : Logic.active-account-name;
@@ -200,11 +230,18 @@ export component PlayView inherits VerticalLayout {
             label: "Instance";
             value: Logic.active-instance-name == "" ? "Select…" : Logic.active-instance-name;
             kind: "instance";
+            show-avatar: Logic.active-instance-name != "";
+            avatar-initial: Logic.active-instance-initial;
+            avatar-tint: Logic.active-instance-color;
         }
         QuickSwitch {
             label: "Account";
             value: Logic.active-account-name == "" ? "Select…" : Logic.active-account-name;
             kind: "account";
+            show-avatar: Logic.active-account-name != "";
+            avatar-initial: Logic.active-account-initial;
+            avatar-tint: Logic.active-account-color;
+            avatar-photo: Logic.active-account-avatar;
         }
     }
 
@@ -219,12 +256,12 @@ export component PlayView inherits VerticalLayout {
         spacing: 6px;
         HorizontalLayout {
             Text { text: Logic.status-text; color: Theme.text-muted; font-size: 13px; horizontal-stretch: 1; overflow: elide; }
-            Text {
+            if !Logic.progress-indeterminate : Text {
                 text: "\{round(clamp(Logic.progress-value, 0.0, 1.0) * 100)}%";
                 color: Theme.accent; font-size: 13px; font-weight: 600;
             }
         }
-        PProgress { value: Logic.progress-value; }
+        PProgress { value: Logic.progress-value; indeterminate: Logic.progress-indeterminate; }
     }
 
     // ---- Log toolbar + view ----

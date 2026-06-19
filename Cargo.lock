@@ -4096,6 +4096,7 @@ dependencies = [
  "directories",
  "flate2",
  "futures-util",
+ "image",
  "open",
  "reqwest",
  "serde",

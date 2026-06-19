@@ -11,6 +11,7 @@ export struct AccountItem {
     active: bool,
     initial: string,       // first letter, for the monogram avatar
     avatar-color: color,   // stable color derived from the account
+    avatar: image,         // player head (empty until fetched); monogram shows meanwhile
 }
 
 export struct InstanceItem {
@@ -98,6 +99,7 @@ export global Logic {
     in property <string> active-account-name;
     in property <string> active-account-initial;
     in property <color> active-account-color;
+    in property <image> active-account-avatar;
     in property <string> active-instance-name;
     in property <string> active-instance-initial;
     in property <color> active-instance-color;
@@ -109,6 +111,7 @@ export global Logic {
     in property <bool> is-busy;
     in property <string> status-text;
     in property <bool> progress-active;
+    in property <bool> progress-indeterminate; // animated sweep for phases with no measurable progress
     in property <float> progress-value;     // 0..1
     in property <[LogLine]> log-lines;
     callback play();

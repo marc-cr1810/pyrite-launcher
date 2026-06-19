@@ -117,10 +117,14 @@ export component MainWindow inherits Window {
                         // Account chip
                         HorizontalLayout {
                             spacing: 8px;
-                            Avatar {
-                                initial: Logic.active-account-name == "" ? "?" : Logic.active-account-initial;
-                                tint: Logic.active-account-name == "" ? Theme.text-dim : Logic.active-account-color;
-                                size: 30px;
+                            VerticalLayout {
+                                alignment: center;
+                                Avatar {
+                                    initial: Logic.active-account-name == "" ? "?" : Logic.active-account-initial;
+                                    tint: Logic.active-account-name == "" ? Theme.text-dim : Logic.active-account-color;
+                                    size: 30px;
+                                    photo: Logic.active-account-avatar;
+                                }
                             }
                             Text {
                                 text: Logic.active-account-name == "" ? "Not signed in" : Logic.active-account-name;

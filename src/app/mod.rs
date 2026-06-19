@@ -2,6 +2,7 @@
 //! bridge the Slint UI to the frontend-agnostic `crate::core`.
 use slint::ComponentHandle;
 
+pub mod avatars;
 pub mod controllers;
 pub mod convert;
 pub mod state;
@@ -40,6 +41,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         ms_cancel: Arc::new(AtomicBool::new(false)),
         log_buf: Arc::new(Mutex::new(Vec::new())),
         log_dirty: Arc::new(AtomicBool::new(false)),
+        avatar_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
     };
 
     let window = MainWindow::new()?;

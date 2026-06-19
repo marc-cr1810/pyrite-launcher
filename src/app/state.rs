@@ -1,9 +1,11 @@
 //! Shared application state passed into every UI callback.
 
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 
+use crate::app::avatars::AvatarEntry;
 use crate::app::theme::ThemeStore;
 use crate::core::config::Config;
 
@@ -24,6 +26,10 @@ pub struct AppState {
     pub log_buf: Arc<Mutex<Vec<String>>>,
     /// Set when `log_buf` has new lines the timer hasn't flushed yet.
     pub log_dirty: Arc<AtomicBool>,
+    /// Decoded player-head avatars, keyed by account UUID. Populated lazily by
+    /// background fetches from Crafatar; the UI thread builds `slint::Image`s
+    /// from the cached pixels. See `app::avatars`.
+    pub avatar_cache: Arc<Mutex<HashMap<String, AvatarEntry>>>,
 }
 
 impl AppState {

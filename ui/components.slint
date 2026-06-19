@@ -64,19 +64,40 @@ export component Card inherits Rectangle {
     drop-shadow-offset-y: root.elevation / 4;
 }
 
-// Thin determinate progress bar.
+// Progress bar. Determinate by default; set `indeterminate` for an animated
+// sweeping segment when there is no measurable progress (resolving, verifying…).
 export component PProgress inherits Rectangle {
     in property <float> value: 0.0; // 0..1
+    in property <bool> indeterminate: false;
     height: 8px;
     border-radius: 4px;
     background: Theme.surface-alt;
+    clip: true;
+
+    // Determinate fill.
     Rectangle {
         x: 0;
+        visible: !root.indeterminate;
         width: parent.width * clamp(root.value, 0.0, 1.0);
         height: parent.height;
         border-radius: 4px;
         background: Theme.accent;
         animate width { duration: 120ms; }
+    }
+
+    // Indeterminate sweep.
+    sweep := Rectangle {
+        visible: root.indeterminate;
+        width: parent.width * 0.35;
+        height: parent.height;
+        border-radius: 4px;
+        background: Theme.accent;
+        x: root.indeterminate ? parent.width - self.width : -self.width;
+        animate x {
+            duration: 1100ms;
+            iteration-count: -1;
+            easing: ease-in-out;
+        }
     }
 }
 
@@ -94,12 +115,16 @@ export component Avatar inherits Rectangle {
     in property <color> tint: Theme.accent;
     in property <length> size: 40px;
     in property <bool> selected: false;
+    in property <image> photo;   // optional; overlays the monogram once loaded
     width: root.size;
     height: root.size;
-    border-radius: root.size / 2;
+    // Rounded square (player heads are square), not a circle.
+    border-radius: root.size * 0.18;
     background: root.tint.with-alpha(0.18);
     border-width: root.selected ? 2px : 0px;
     border-color: root.tint;
+    clip: true;
+    // Monogram fallback (shown until/unless a photo is present).
     Text {
         text: root.initial;
         color: root.tint;
@@ -107,6 +132,14 @@ export component Avatar inherits Rectangle {
         font-weight: 700;
         horizontal-alignment: center;
         vertical-alignment: center;
+    }
+    // Player head, drawn on top when available.
+    if root.photo.width > 0 : Image {
+        width: 100%;
+        height: 100%;
+        source: root.photo;
+        image-fit: cover;
+        image-rendering: pixelated;
     }
 }
 

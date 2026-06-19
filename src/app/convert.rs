@@ -2,6 +2,8 @@
 
 use slint::{Color, ModelRc, SharedString, VecModel};
 
+use crate::app::avatars;
+use crate::app::state::AppState;
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::Instance;
 use crate::{AccountItem, InstanceItem, LogLine};
@@ -34,7 +36,7 @@ pub fn avatar_color(key: &str) -> Color {
     Color::from_rgb_u8(r, g, b)
 }
 
-pub fn accounts_model(config: &Config) -> ModelRc<AccountItem> {
+pub fn accounts_model(config: &Config, state: &AppState) -> ModelRc<AccountItem> {
     let active = config.active_account_uuid.clone();
     let items: Vec<AccountItem> = config
         .accounts
@@ -49,6 +51,7 @@ pub fn accounts_model(config: &Config) -> ModelRc<AccountItem> {
             active: active.as_deref() == Some(a.uuid.as_str()),
             initial: initial(&a.username),
             avatar_color: avatar_color(&a.uuid),
+            avatar: avatars::image_for(state, &a.uuid),
         })
         .collect();
     ModelRc::new(VecModel::from(items))

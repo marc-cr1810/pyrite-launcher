@@ -50,7 +50,7 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
 
     state.rt.clone().spawn(async move {
         set_busy(&weak, true);
-        ui::progress_async(&weak, true, 0.0);
+        ui::progress_indeterminate_async(&weak, true);
 
         // Snapshot what we need from config.
         let (config, instance, account) = {
@@ -94,6 +94,7 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
         // A tokio task here would be starved behind the blocking launch and only
         // flush once the game exits.
         status(&weak, "Launching Minecraft…");
+        ui::progress_indeterminate_async(&weak, true);
         let (log_tx, mut log_rx) = mpsc::channel::<String>(1024);
         let log_buf = state.log_buf.clone();
         let log_dirty = state.log_dirty.clone();
@@ -170,24 +171,54 @@ async fn download_version_files(
         downloader.download_version(&game_dir, &dl_details).await
     });
 
+    // Track per-phase timing so we can show a download rate and rough ETA.
+    // Progress is file-count based, so the rate is in files/s.
+    let mut phase_start = std::time::Instant::now();
     while let Some(update) = rx.recv().await {
         match update {
             ProgressUpdate::Started { message, .. } => {
+                phase_start = std::time::Instant::now();
                 status(weak, message);
-                ui::progress_async(weak, true, 0.0);
+                // No counts yet for this phase — sweep until the first Progress.
+                ui::progress_indeterminate_async(weak, true);
             }
             ProgressUpdate::Progress { completed, total, current_file } => {
                 let frac = if total > 0 { completed as f32 / total as f32 } else { 0.0 };
                 ui::progress_async(weak, true, frac);
-                status(weak, format!("[{completed}/{total}] {current_file}"));
+                status(weak, format!("[{completed}/{total}] {current_file}{}",
+                    rate_suffix(completed, total, phase_start.elapsed())));
             }
-            ProgressUpdate::Message(m) => status(weak, m),
+            ProgressUpdate::Message(m) => {
+                status(weak, m);
+                ui::progress_indeterminate_async(weak, true);
+            }
             ProgressUpdate::Finished => ui::progress_async(weak, true, 1.0),
             ProgressUpdate::Error(e) => return Err(e),
         }
     }
 
     dl_task.await.map_err(|e| e.to_string())?
+}
+
+/// Format a "  ·  N files/s  ·  ETA Ms" suffix from the count completed so far
+/// in the current phase. Returns empty until there's enough signal to be useful.
+fn rate_suffix(completed: usize, total: usize, elapsed: std::time::Duration) -> String {
+    let secs = elapsed.as_secs_f32();
+    if completed == 0 || secs < 0.5 {
+        return String::new();
+    }
+    let rate = completed as f32 / secs;
+    if rate < 1.0 {
+        return String::new();
+    }
+    let remaining = total.saturating_sub(completed);
+    let eta = (remaining as f32 / rate).ceil() as u64;
+    let eta_str = if remaining > 0 && eta > 0 {
+        format!("  ·  ETA {eta}s")
+    } else {
+        String::new()
+    };
+    format!("  ·  {rate:.0} files/s{eta_str}")
 }
 
 fn finish(state: &AppState, weak: &Weak<MainWindow>) {

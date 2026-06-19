@@ -2,32 +2,36 @@
 //! thread (they take `&MainWindow`).
 use slint::ComponentHandle;
 
-use crate::app::convert;
 use crate::app::state::AppState;
+use crate::app::{avatars, convert};
 use crate::core::config::Config;
 use crate::core::instance::Instance;
 use crate::{Logic, MainWindow};
 
-pub fn refresh_accounts(ui: &MainWindow, config: &Config) {
-    ui.global::<Logic>().set_accounts(convert::accounts_model(config));
+pub fn refresh_accounts(ui: &MainWindow, config: &Config, state: &AppState) {
+    ui.global::<Logic>()
+        .set_accounts(convert::accounts_model(config, state));
+    // Kick off avatar fetches for any accounts we haven't loaded heads for yet.
+    let uuids: Vec<String> = config.accounts.iter().map(|a| a.uuid.clone()).collect();
+    avatars::ensure(state, &ui.as_weak(), uuids);
 }
 
 pub fn refresh_instances(ui: &MainWindow, config: &Config) {
     ui.global::<Logic>().set_instances(convert::instances_model(config));
 }
 
-pub fn refresh_summary(ui: &MainWindow, config: &Config) {
+pub fn refresh_summary(ui: &MainWindow, config: &Config, state: &AppState) {
     let logic = ui.global::<Logic>();
 
     let active_account = config.get_active_account();
     let account_name = active_account
         .map(|a| a.username.clone())
         .unwrap_or_default();
+    let account_uuid = active_account.map(|a| a.uuid.as_str()).unwrap_or("");
     logic.set_active_account_name(account_name.clone().into());
     logic.set_active_account_initial(convert::initial(&account_name));
-    logic.set_active_account_color(
-        convert::avatar_color(active_account.map(|a| a.uuid.as_str()).unwrap_or("")),
-    );
+    logic.set_active_account_color(convert::avatar_color(account_uuid));
+    logic.set_active_account_avatar(avatars::image_for(state, account_uuid));
 
     let mut inst_name = String::new();
     let mut inst_version = String::new();
@@ -73,9 +77,9 @@ pub fn refresh_themes(ui: &MainWindow, state: &AppState) {
 
 pub fn refresh_all(ui: &MainWindow, state: &AppState) {
     let config = state.config.lock().unwrap();
-    refresh_accounts(ui, &config);
+    refresh_accounts(ui, &config, state);
     refresh_instances(ui, &config);
-    refresh_summary(ui, &config);
+    refresh_summary(ui, &config, state);
     refresh_settings(ui, &config);
     drop(config);
     refresh_themes(ui, state);
@@ -109,10 +113,21 @@ pub fn set_ms_dialog(
 pub fn set_progress(ui: &MainWindow, active: bool, value: f32) {
     let logic = ui.global::<Logic>();
     logic.set_progress_active(active);
+    logic.set_progress_indeterminate(false);
     logic.set_progress_value(value);
 }
 
-/// Update the progress bar from a background task via the event loop.
+/// Update the determinate progress bar from a background task via the event loop.
 pub fn progress_async(weak: &slint::Weak<MainWindow>, active: bool, value: f32) {
     let _ = weak.upgrade_in_event_loop(move |ui| set_progress(&ui, active, value));
+}
+
+/// Show an indeterminate (animated sweep) progress bar for phases with no
+/// measurable progress, such as resolving manifests or launching.
+pub fn progress_indeterminate_async(weak: &slint::Weak<MainWindow>, active: bool) {
+    let _ = weak.upgrade_in_event_loop(move |ui| {
+        let logic = ui.global::<Logic>();
+        logic.set_progress_active(active);
+        logic.set_progress_indeterminate(active);
+    });
 }

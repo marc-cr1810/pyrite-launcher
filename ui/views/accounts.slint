@@ -63,7 +63,10 @@ export component AccountsView inherits Rectangle {
                         HorizontalLayout {
                             padding: 12px;
                             spacing: 12px;
-                            Avatar { initial: acc.initial; tint: acc.avatar-color; size: 38px; selected: acc.active; }
+                            VerticalLayout {
+                                alignment: center;
+                                Avatar { initial: acc.initial; tint: acc.avatar-color; size: 38px; selected: acc.active; photo: acc.avatar; }
+                            }
                             VerticalLayout {
                                 alignment: center;
                                 spacing: 3px;

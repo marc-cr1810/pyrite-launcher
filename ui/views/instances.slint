@@ -50,7 +50,10 @@ export component InstancesView inherits Rectangle {
                         HorizontalLayout {
                             padding: 12px;
                             spacing: 12px;
-                            Avatar { initial: inst.initial; tint: inst.avatar-color; size: 42px; selected: inst.active; }
+                            VerticalLayout {
+                                alignment: center;
+                                Avatar { initial: inst.initial; tint: inst.avatar-color; size: 42px; selected: inst.active; }
+                            }
                             VerticalLayout {
                                 alignment: center;
                                 spacing: 4px;
