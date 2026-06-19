@@ -1,10 +1,17 @@
 // Reusable themed building blocks. All colors come from `Theme`.
 import { Theme } from "globals.slint";
+import { ScrollView } from "std-widgets.slint";
 
-// Primary / secondary push button.
+// Push button with visual variants:
+//   primary  - filled accent (main call to action)
+//   danger   - quiet by default, turns red on hover (destructive actions)
+//   ghost    - borderless, text-only (low-emphasis actions)
+//   (default) - bordered secondary surface
 export component PButton inherits Rectangle {
     in property <string> text;
     in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> ghost: false;
     in property <bool> enabled: true;
     callback clicked();
 
@@ -13,19 +20,25 @@ export component PButton inherits Rectangle {
     min-width: txt.preferred-width + 32px;
     border-radius: Theme.radius-sm;
     background: !enabled
-        ? Theme.surface-alt
+        ? (ghost ? transparent : Theme.surface-alt)
         : primary
             ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
-            : (touch.has-hover ? Theme.surface-hover : Theme.surface-alt);
-    border-width: primary ? 0px : 1px;
-    border-color: Theme.border;
-    animate background { duration: 120ms; }
+            : danger
+                ? (touch.has-hover ? Theme.error : transparent)
+                : ghost
+                    ? (touch.has-hover ? Theme.surface : transparent)
+                    : (touch.has-hover ? Theme.surface-hover : Theme.surface-alt);
+    border-width: (primary || ghost) ? 0px : 1px;
+    border-color: danger ? (touch.has-hover ? Theme.error : Theme.border) : Theme.border;
+    animate background, border-color { duration: 120ms; }
 
     txt := Text {
         text: root.text;
         color: !root.enabled
             ? Theme.text-dim
-            : root.primary ? Theme.accent-text : Theme.text;
+            : root.primary ? Theme.accent-text
+            : root.danger ? (touch.has-hover ? Theme.accent-text : Theme.error)
+            : Theme.text;
         font-size: 14px;
         font-weight: 600;
         horizontal-alignment: center;
@@ -39,12 +52,16 @@ export component PButton inherits Rectangle {
     }
 }
 
-// Subtle card surface.
+// Subtle elevated card surface.
 export component Card inherits Rectangle {
+    in property <length> elevation: 8px;
     background: Theme.surface;
     border-radius: Theme.radius;
     border-width: 1px;
     border-color: Theme.border;
+    drop-shadow-color: #00000040;
+    drop-shadow-blur: root.elevation;
+    drop-shadow-offset-y: root.elevation / 4;
 }
 
 // Thin determinate progress bar.
@@ -68,4 +85,128 @@ export component PHeading inherits Text {
     color: Theme.text;
     font-size: 22px;
     font-weight: 700;
+}
+
+// Round monogram avatar: a colored disc with an initial. Avoids any network
+// fetch while still giving accounts/instances a recognizable identity.
+export component Avatar inherits Rectangle {
+    in property <string> initial;
+    in property <color> tint: Theme.accent;
+    in property <length> size: 40px;
+    in property <bool> selected: false;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: root.tint.with-alpha(0.18);
+    border-width: root.selected ? 2px : 0px;
+    border-color: root.tint;
+    Text {
+        text: root.initial;
+        color: root.tint;
+        font-size: root.size * 0.42;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Small colored pill, e.g. a mod-loader label.
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <color> tint: Theme.accent;
+    horizontal-stretch: 0;
+    height: 20px;
+    min-width: label.preferred-width + 16px;
+    border-radius: 10px;
+    background: root.tint.with-alpha(0.16);
+    label := Text {
+        x: 8px;
+        text: root.text;
+        color: root.tint;
+        font-size: 11px;
+        font-weight: 600;
+        vertical-alignment: center;
+    }
+}
+
+// Mod-loader pill, tinted consistently across views.
+export component LoaderBadge inherits Badge {
+    in property <string> loader;
+    text: root.loader;
+    tint: root.loader == "Fabric" ? Theme.warning
+        : root.loader == "Forge" ? Theme.accent
+        : root.loader == "NeoForge" ? #ff9e64
+        : Theme.text-muted;
+}
+
+// Centered empty-state block with an icon, message and optional call-to-action.
+export component EmptyState inherits VerticalLayout {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> action-text;
+    callback action();
+    alignment: center;
+    spacing: 8px;
+    HorizontalLayout {
+        alignment: center;
+        Text { text: root.icon; font-size: 40px; color: Theme.text-dim; }
+    }
+    Text {
+        text: root.title;
+        color: Theme.text-muted;
+        font-size: 15px;
+        font-weight: 600;
+        horizontal-alignment: center;
+    }
+    if root.subtitle != "" : Text {
+        text: root.subtitle;
+        color: Theme.text-dim;
+        font-size: 12px;
+        horizontal-alignment: center;
+    }
+    if root.action-text != "" : HorizontalLayout {
+        alignment: center;
+        padding-top: 6px;
+        PButton { text: root.action-text; primary: true; clicked => { root.action(); } }
+    }
+}
+
+// Modal dialog: dims the background, swallows clicks behind it, closes on
+// backdrop click or Escape, and floats a shadowed card sized to its content.
+export component Dialog inherits Rectangle {
+    in property <length> dialog-width: 460px;
+    callback closed();
+    width: 100%;
+    height: 100%;
+    background: #00000099;
+
+    // Backdrop click closes.
+    backdrop := TouchArea {
+        clicked => { root.closed(); }
+    }
+
+    // Escape closes. Grabs focus while the dialog is shown.
+    key-handler := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.closed();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    init => { key-handler.focus(); }
+
+    Card {
+        elevation: 24px;
+        width: root.dialog-width;
+        // Click inside the card must not fall through to the backdrop.
+        TouchArea {}
+        VerticalLayout {
+            padding: 24px;
+            spacing: 12px;
+            @children
+        }
+    }
 }

@@ -19,11 +19,15 @@ pub fn refresh_instances(ui: &MainWindow, config: &Config) {
 pub fn refresh_summary(ui: &MainWindow, config: &Config) {
     let logic = ui.global::<Logic>();
 
-    let account_name = config
-        .get_active_account()
+    let active_account = config.get_active_account();
+    let account_name = active_account
         .map(|a| a.username.clone())
         .unwrap_or_default();
     logic.set_active_account_name(account_name.clone().into());
+    logic.set_active_account_initial(convert::initial(&account_name));
+    logic.set_active_account_color(
+        convert::avatar_color(active_account.map(|a| a.uuid.as_str()).unwrap_or("")),
+    );
 
     let mut inst_name = String::new();
     let mut inst_version = String::new();
@@ -44,6 +48,10 @@ pub fn refresh_summary(ui: &MainWindow, config: &Config) {
         }
     }
     logic.set_active_instance_name(inst_name.clone().into());
+    logic.set_active_instance_initial(convert::initial(&inst_name));
+    logic.set_active_instance_color(
+        convert::avatar_color(config.active_instance.as_deref().unwrap_or("")),
+    );
     logic.set_active_instance_version(inst_version.into());
     logic.set_active_instance_loader(inst_loader.into());
 

@@ -9,6 +9,8 @@ export struct AccountItem {
     username: string,
     kind: string,      // "Microsoft" or "Offline"
     active: bool,
+    initial: string,       // first letter, for the monogram avatar
+    avatar-color: color,   // stable color derived from the account
 }
 
 export struct InstanceItem {
@@ -17,6 +19,8 @@ export struct InstanceItem {
     version: string,
     loader: string,    // "" for vanilla, otherwise "Fabric"/"Forge"/"NeoForge"
     active: bool,
+    initial: string,       // first letter, for the monogram avatar
+    avatar-color: color,   // stable color derived from the instance
 }
 
 export struct VersionItem {
@@ -92,7 +96,11 @@ export global Logic {
 
     // --- Active selection summary (Play view) ---
     in property <string> active-account-name;
+    in property <string> active-account-initial;
+    in property <color> active-account-color;
     in property <string> active-instance-name;
+    in property <string> active-instance-initial;
+    in property <color> active-instance-color;
     in property <string> active-instance-version;
     in property <string> active-instance-loader;
     in property <bool> can-play;
@@ -105,6 +113,7 @@ export global Logic {
     in property <[LogLine]> log-lines;
     callback play();
     callback clear-logs();
+    callback copy-logs();
 
     // --- Settings & theming ---
     in-out property <string> game-dir;

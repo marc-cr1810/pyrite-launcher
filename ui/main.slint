@@ -1,4 +1,5 @@
 import { Theme, Logic } from "globals.slint";
+import { Avatar } from "components.slint";
 import { PlayView } from "views/play.slint";
 import { AccountsView } from "views/accounts.slint";
 import { InstancesView } from "views/instances.slint";
@@ -87,10 +88,61 @@ export component MainWindow inherits Window {
         // Content
         Rectangle {
             background: Theme.window-bg;
-            if root.current-view == 0 : PlayView { }
-            if root.current-view == 1 : InstancesView { }
-            if root.current-view == 2 : AccountsView { }
-            if root.current-view == 3 : SettingsView { }
+            VerticalLayout {
+                // Header strip: current view title + persistent account chip.
+                Rectangle {
+                    height: 60px;
+                    background: Theme.window-bg;
+                    HorizontalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 12px;
+                        Text {
+                            text: root.current-view == 0 ? "Play"
+                                : root.current-view == 1 ? "Instances"
+                                : root.current-view == 2 ? "Accounts"
+                                : "Settings";
+                            color: Theme.text;
+                            font-size: 22px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        if Logic.is-busy : Text {
+                            text: "● working…";
+                            color: Theme.warning;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        // Account chip
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Avatar {
+                                initial: Logic.active-account-name == "" ? "?" : Logic.active-account-initial;
+                                tint: Logic.active-account-name == "" ? Theme.text-dim : Logic.active-account-color;
+                                size: 30px;
+                            }
+                            Text {
+                                text: Logic.active-account-name == "" ? "Not signed in" : Logic.active-account-name;
+                                color: Theme.text-muted;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                }
+                Rectangle {
+                    if root.current-view == 0 : PlayView { }
+                    if root.current-view == 1 : InstancesView { }
+                    if root.current-view == 2 : AccountsView { }
+                    if root.current-view == 3 : SettingsView { }
+                }
+            }
         }
     }
 }

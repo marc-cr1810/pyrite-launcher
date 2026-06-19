@@ -92,6 +92,10 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
         let weak = ui.as_weak();
         logic.on_clear_logs(move || launch::clear_logs(&st, &weak));
     }
+    {
+        let st = state.clone();
+        logic.on_copy_logs(move || launch::copy_logs(&st));
+    }
 
     // --- Settings ---
     {

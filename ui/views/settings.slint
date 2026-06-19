@@ -1,12 +1,10 @@
 import { Theme, Logic } from "../globals.slint";
-import { Card, PButton, PHeading } from "../components.slint";
+import { Card, PButton } from "../components.slint";
 import { LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
 
 export component SettingsView inherits VerticalLayout {
     padding: 24px;
     spacing: 18px;
-
-    PHeading { text: "Settings"; }
 
     ScrollView {
         VerticalLayout {

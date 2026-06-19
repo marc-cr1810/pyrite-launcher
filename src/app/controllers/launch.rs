@@ -24,6 +24,17 @@ pub fn clear_logs(state: &AppState, weak: &Weak<MainWindow>) {
     });
 }
 
+/// Copy the full game log to the system clipboard.
+pub fn copy_logs(state: &AppState) {
+    let text = state.log_buf.lock().unwrap().join("\n");
+    if text.trim().is_empty() {
+        return;
+    }
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        let _ = clipboard.set_text(text);
+    }
+}
+
 pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
     // Guard against overlapping launches.
     {

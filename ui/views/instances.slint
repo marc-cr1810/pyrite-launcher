@@ -1,9 +1,12 @@
 import { Theme, Logic, InstanceItem } from "../globals.slint";
-import { Card, PButton, PHeading } from "../components.slint";
+import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog } from "../components.slint";
 import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 
 export component InstancesView inherits Rectangle {
     property <bool> dialog-open: false;
+    property <bool> confirm-open: false;
+    property <string> pending-id;
+    property <string> pending-name;
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
 
     VerticalLayout {
@@ -11,7 +14,6 @@ export component InstancesView inherits Rectangle {
         spacing: 18px;
 
         HorizontalLayout {
-            PHeading { text: "Instances"; }
             Rectangle { }
             PButton {
                 text: "+ New Instance";
@@ -25,35 +27,43 @@ export component InstancesView inherits Rectangle {
 
         Card {
             vertical-stretch: 1;
-            ScrollView {
+            if Logic.instances.length == 0 : EmptyState {
+                icon: "▤";
+                title: "No instances yet";
+                subtitle: "Create one to choose a Minecraft version and mod loader.";
+                action-text: "+ Create your first instance";
+                action => {
+                    root.dialog-open = true;
+                    Logic.load-versions();
+                }
+            }
+            if Logic.instances.length > 0 : ScrollView {
                 VerticalLayout {
                     padding: 8px;
                     spacing: 6px;
-                    if Logic.instances.length == 0 : Text {
-                        text: "No instances yet. Create one to get started.";
-                        color: Theme.text-dim;
-                        font-size: 13px;
-                    }
                     for inst in Logic.instances : Rectangle {
-                        height: 64px;
+                        height: 66px;
                         border-radius: Theme.radius-sm;
                         background: inst.active ? Theme.surface-alt : transparent;
                         border-width: 1px;
                         border-color: inst.active ? Theme.accent : transparent;
                         HorizontalLayout {
-                            padding: 14px;
+                            padding: 12px;
                             spacing: 12px;
+                            Avatar { initial: inst.initial; tint: inst.avatar-color; size: 42px; selected: inst.active; }
                             VerticalLayout {
                                 alignment: center;
-                                spacing: 3px;
-                                Text { text: inst.name; color: Theme.text; font-size: 16px; font-weight: 600; }
-                                Text {
-                                    text: inst.version + (inst.loader == "" ? "" : "  •  " + inst.loader)
-                                        + (inst.active ? "  •  active" : "");
-                                    color: Theme.text-muted; font-size: 12px;
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: inst.name; color: Theme.text; font-size: 16px; font-weight: 600; overflow: elide; }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    Text { text: inst.version; color: Theme.text-muted; font-size: 12px; vertical-alignment: center; }
+                                    if inst.loader != "" : LoaderBadge { loader: inst.loader; }
+                                    if inst.active : Text { text: "● active"; color: Theme.success; font-size: 11px; vertical-alignment: center; }
                                 }
                             }
-                            Rectangle { }
                             VerticalLayout {
                                 alignment: center;
                                 PButton {
@@ -67,7 +77,12 @@ export component InstancesView inherits Rectangle {
                                 alignment: center;
                                 PButton {
                                     text: "Delete";
-                                    clicked => { Logic.delete-instance(inst.id); }
+                                    danger: true;
+                                    clicked => {
+                                        root.pending-id = inst.id;
+                                        root.pending-name = inst.name;
+                                        root.confirm-open = true;
+                                    }
                                 }
                             }
                         }
@@ -77,72 +92,87 @@ export component InstancesView inherits Rectangle {
         }
     }
 
-    // Create dialog overlay
-    if root.dialog-open : Rectangle {
-        width: 100%;
-        height: 100%;
-        background: #000000aa;
-        TouchArea { }
-        Card {
-            width: 460px;
-            height: 420px;
-            VerticalLayout {
-                padding: 24px;
-                spacing: 12px;
-                Text { text: "New Instance"; color: Theme.text; font-size: 18px; font-weight: 700; }
+    // ---- Create dialog ----
+    if root.dialog-open : Dialog {
+        dialog-width: 460px;
+        closed => { root.dialog-open = false; }
+        Text { text: "New Instance"; color: Theme.text; font-size: 18px; font-weight: 700; }
 
-                Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
-                name-edit := LineEdit { placeholder-text: "My instance"; }
+        Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
+        name-edit := LineEdit { placeholder-text: "My instance"; }
 
-                Text { text: "Minecraft version"; color: Theme.text-muted; font-size: 12px; }
-                version-combo := ComboBox {
-                    model: Logic.version-list;
-                    enabled: !Logic.versions-loading && Logic.version-list.length > 0;
+        Text { text: "Minecraft version"; color: Theme.text-muted; font-size: 12px; }
+        version-combo := ComboBox {
+            model: Logic.version-list;
+            enabled: !Logic.versions-loading && Logic.version-list.length > 0;
+        }
+        if Logic.versions-loading : Text { text: "Loading versions…"; color: Theme.text-dim; font-size: 11px; }
+
+        Text { text: "Mod loader"; color: Theme.text-muted; font-size: 12px; }
+        loader-combo := ComboBox {
+            model: root.loaders;
+            current-index: 0;
+            selected(val) => {
+                if val != "Vanilla" && version-combo.current-value != "" {
+                    Logic.load-loader-versions(val, version-combo.current-value);
                 }
-                if Logic.versions-loading : Text { text: "Loading versions…"; color: Theme.text-dim; font-size: 11px; }
+            }
+        }
+        if loader-combo.current-value != "Vanilla" && Logic.loader-versions-loading :
+            Text { text: "Loading loader versions…"; color: Theme.text-dim; font-size: 11px; }
+        if loader-combo.current-value != "Vanilla" && !Logic.loader-versions-loading :
+            Text {
+                text: Logic.loader-version-list.length > 0
+                    ? "Recommended loader version will be used."
+                    : "No loader versions for this Minecraft version.";
+                color: Theme.text-dim; font-size: 11px;
+            }
 
-                Text { text: "Mod loader"; color: Theme.text-muted; font-size: 12px; }
-                loader-combo := ComboBox {
-                    model: root.loaders;
-                    current-index: 0;
-                    selected(val) => {
-                        if val != "Vanilla" && version-combo.current-value != "" {
-                            Logic.load-loader-versions(val, version-combo.current-value);
-                        }
-                    }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton {
+                text: "Cancel";
+                clicked => { root.dialog-open = false; }
+            }
+            PButton {
+                text: "Create";
+                primary: true;
+                enabled: name-edit.text != "" && version-combo.current-value != "";
+                clicked => {
+                    Logic.create-instance(
+                        name-edit.text,
+                        version-combo.current-value,
+                        loader-combo.current-value == "Vanilla" ? "" : loader-combo.current-value,
+                        "");
+                    root.dialog-open = false;
+                    name-edit.text = "";
                 }
-                if loader-combo.current-value != "Vanilla" && Logic.loader-versions-loading :
-                    Text { text: "Loading loader versions…"; color: Theme.text-dim; font-size: 11px; }
-                if loader-combo.current-value != "Vanilla" && !Logic.loader-versions-loading :
-                    Text {
-                        text: Logic.loader-version-list.length > 0
-                            ? "Recommended loader version will be used."
-                            : "No loader versions for this Minecraft version.";
-                        color: Theme.text-dim; font-size: 11px;
-                    }
+            }
+        }
+    }
 
-                Rectangle { }
-                HorizontalLayout {
-                    alignment: end;
-                    spacing: 10px;
-                    PButton {
-                        text: "Cancel";
-                        clicked => { root.dialog-open = false; }
-                    }
-                    PButton {
-                        text: "Create";
-                        primary: true;
-                        enabled: name-edit.text != "" && version-combo.current-value != "";
-                        clicked => {
-                            Logic.create-instance(
-                                name-edit.text,
-                                version-combo.current-value,
-                                loader-combo.current-value == "Vanilla" ? "" : loader-combo.current-value,
-                                "");
-                            root.dialog-open = false;
-                            name-edit.text = "";
-                        }
-                    }
+    // ---- Delete confirmation ----
+    if root.confirm-open : Dialog {
+        dialog-width: 400px;
+        closed => { root.confirm-open = false; }
+        Text { text: "Delete instance?"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        Text {
+            text: "“" + root.pending-name + "” and all of its files will be permanently removed. This cannot be undone.";
+            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { root.confirm-open = false; } }
+            PButton {
+                text: "Delete";
+                danger: true;
+                clicked => {
+                    Logic.delete-instance(root.pending-id);
+                    root.confirm-open = false;
                 }
             }
         }

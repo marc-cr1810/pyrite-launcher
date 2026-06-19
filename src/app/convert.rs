@@ -1,10 +1,38 @@
 //! Build Slint UI models from core data structures.
 
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{Color, ModelRc, SharedString, VecModel};
 
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::Instance;
 use crate::{AccountItem, InstanceItem, LogLine};
+
+/// Uppercased first character of a name, for monogram avatars. "?" if empty.
+pub fn initial(name: &str) -> SharedString {
+    name.chars()
+        .next()
+        .map(|c| c.to_uppercase().to_string())
+        .unwrap_or_else(|| "?".to_string())
+        .into()
+}
+
+/// A stable, pleasant color derived from a key (uuid / instance id), so each
+/// account or instance keeps the same avatar tint across launches.
+pub fn avatar_color(key: &str) -> Color {
+    // A small curated palette that reads well on the dark surfaces.
+    const PALETTE: [(u8, u8, u8); 8] = [
+        (122, 162, 247), // blue
+        (158, 206, 106), // green
+        (224, 175, 104), // amber
+        (247, 118, 142), // red
+        (187, 154, 247), // purple
+        (125, 207, 255), // cyan
+        (255, 158, 100), // orange
+        (115, 218, 202), // teal
+    ];
+    let hash = key.bytes().fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
+    let (r, g, b) = PALETTE[(hash as usize) % PALETTE.len()];
+    Color::from_rgb_u8(r, g, b)
+}
 
 pub fn accounts_model(config: &Config) -> ModelRc<AccountItem> {
     let active = config.active_account_uuid.clone();
@@ -19,6 +47,8 @@ pub fn accounts_model(config: &Config) -> ModelRc<AccountItem> {
                 AccountType::Offline => "Offline".into(),
             },
             active: active.as_deref() == Some(a.uuid.as_str()),
+            initial: initial(&a.username),
+            avatar_color: avatar_color(&a.uuid),
         })
         .collect();
     ModelRc::new(VecModel::from(items))
@@ -44,6 +74,8 @@ pub fn instances_model(config: &Config) -> ModelRc<InstanceItem> {
                 version: game_version.into(),
                 loader: SharedString::from(loader_label),
                 active: active.as_deref() == Some(inst.id.as_str()),
+                initial: initial(&inst.config.name),
+                avatar_color: avatar_color(&inst.id),
             }
         })
         .collect();
