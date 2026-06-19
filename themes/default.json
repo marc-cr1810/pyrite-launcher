@@ -1,0 +1,18 @@
+{
+  "name": "Default Dark",
+  "window_bg": "#16161e",
+  "sidebar_bg": "#13131a",
+  "surface": "#1f1f2e",
+  "surface_alt": "#262636",
+  "surface_hover": "#2e2e42",
+  "text": "#e6e6f0",
+  "text_muted": "#a9a9c2",
+  "text_dim": "#6c6c85",
+  "accent": "#7aa2f7",
+  "accent_hover": "#8fb3ff",
+  "accent_text": "#0d0d14",
+  "border": "#2c2c3e",
+  "success": "#9ece6a",
+  "warning": "#e0af68",
+  "error": "#f7768e"
+}

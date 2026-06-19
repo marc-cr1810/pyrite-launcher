@@ -1,0 +1,71 @@
+// Reusable themed building blocks. All colors come from `Theme`.
+import { Theme } from "globals.slint";
+
+// Primary / secondary push button.
+export component PButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 38px;
+    horizontal-stretch: 0;
+    min-width: txt.preferred-width + 32px;
+    border-radius: Theme.radius-sm;
+    background: !enabled
+        ? Theme.surface-alt
+        : primary
+            ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
+            : (touch.has-hover ? Theme.surface-hover : Theme.surface-alt);
+    border-width: primary ? 0px : 1px;
+    border-color: Theme.border;
+    animate background { duration: 120ms; }
+
+    txt := Text {
+        text: root.text;
+        color: !root.enabled
+            ? Theme.text-dim
+            : root.primary ? Theme.accent-text : Theme.text;
+        font-size: 14px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Subtle card surface.
+export component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+}
+
+// Thin determinate progress bar.
+export component PProgress inherits Rectangle {
+    in property <float> value: 0.0; // 0..1
+    height: 8px;
+    border-radius: 4px;
+    background: Theme.surface-alt;
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.value, 0.0, 1.0);
+        height: parent.height;
+        border-radius: 4px;
+        background: Theme.accent;
+        animate width { duration: 120ms; }
+    }
+}
+
+// Section heading.
+export component PHeading inherits Text {
+    color: Theme.text;
+    font-size: 22px;
+    font-weight: 700;
+}

@@ -1,0 +1,160 @@
+import { Theme, Logic, AccountItem } from "../globals.slint";
+import { Card, PButton, PHeading } from "../components.slint";
+import { ScrollView, LineEdit } from "std-widgets.slint";
+
+export component AccountsView inherits Rectangle {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+
+        HorizontalLayout {
+            PHeading { text: "Accounts"; }
+            Rectangle { }
+            PButton {
+                text: "+ Microsoft";
+                primary: true;
+                clicked => { Logic.start-microsoft(); }
+            }
+        }
+
+        // Add offline row
+        Card {
+            height: 70px;
+            HorizontalLayout {
+                padding: 14px;
+                spacing: 10px;
+                offline-name := LineEdit {
+                    placeholder-text: "Offline username";
+                    width: 260px;
+                }
+                PButton {
+                    text: "Add offline";
+                    clicked => {
+                        if offline-name.text != "" {
+                            Logic.add-offline(offline-name.text);
+                            offline-name.text = "";
+                        }
+                    }
+                }
+                Rectangle { }
+            }
+        }
+
+        Card {
+            vertical-stretch: 1;
+            ScrollView {
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+                    if Logic.accounts.length == 0 : Text {
+                        text: "No accounts yet. Add one above.";
+                        color: Theme.text-dim;
+                        font-size: 13px;
+                    }
+                    for acc in Logic.accounts : Rectangle {
+                        height: 58px;
+                        border-radius: Theme.radius-sm;
+                        background: acc.active ? Theme.surface-alt : transparent;
+                        border-width: 1px;
+                        border-color: acc.active ? Theme.accent : transparent;
+                        HorizontalLayout {
+                            padding: 12px;
+                            spacing: 12px;
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text { text: acc.username; color: Theme.text; font-size: 15px; font-weight: 600; }
+                                Text { text: acc.kind + (acc.active ? "  •  active" : ""); color: Theme.text-muted; font-size: 12px; }
+                            }
+                            Rectangle { }
+                            VerticalLayout {
+                                alignment: center;
+                                PButton {
+                                    text: acc.active ? "Active" : "Use";
+                                    primary: !acc.active;
+                                    enabled: !acc.active;
+                                    clicked => { Logic.select-account(acc.uuid); }
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                PButton {
+                                    text: "Remove";
+                                    clicked => { Logic.remove-account(acc.uuid); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Microsoft device-code dialog (overlay)
+    if Logic.ms-dialog-open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000aa;
+        TouchArea { } // swallow clicks behind dialog
+        Card {
+            width: 440px;
+            height: 330px;
+            VerticalLayout {
+                padding: 24px;
+                spacing: 12px;
+                Text { text: "Sign in with Microsoft"; color: Theme.text; font-size: 18px; font-weight: 700; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "1. Open this page in your browser:"; color: Theme.text-muted; font-size: 13px; vertical-alignment: center; }
+                    PButton {
+                        text: "Open";
+                        height: 28px;
+                        clicked => { Logic.open-url(Logic.ms-verification-uri); }
+                    }
+                }
+                uri-touch := TouchArea {
+                    height: link-text.preferred-height;
+                    mouse-cursor: pointer;
+                    clicked => { Logic.open-url(Logic.ms-verification-uri); }
+                    link-text := Text {
+                        text: Logic.ms-verification-uri;
+                        color: uri-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+                }
+                Text { text: "2. Enter this code:"; color: Theme.text-muted; font-size: 13px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        height: 48px;
+                        horizontal-stretch: 1;
+                        border-radius: Theme.radius-sm;
+                        background: Theme.surface-alt;
+                        Text {
+                            text: Logic.ms-user-code;
+                            color: Theme.text; font-size: 24px; font-weight: 700;
+                            font-family: "monospace";
+                        }
+                    }
+                    PButton {
+                        text: "Copy";
+                        height: 48px;
+                        clicked => { Logic.copy-code(Logic.ms-user-code); }
+                    }
+                }
+                Text {
+                    text: Logic.ms-message;
+                    color: Logic.ms-active ? Theme.warning : Theme.text-muted;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+                Rectangle { }
+                HorizontalLayout {
+                    alignment: end;
+                    PButton { text: "Cancel"; clicked => { Logic.cancel-microsoft(); } }
+                }
+            }
+        }
+    }
+}

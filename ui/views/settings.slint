@@ -1,0 +1,62 @@
+import { Theme, Logic } from "../globals.slint";
+import { Card, PButton, PHeading } from "../components.slint";
+import { LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
+
+export component SettingsView inherits VerticalLayout {
+    padding: 24px;
+    spacing: 18px;
+
+    PHeading { text: "Settings"; }
+
+    ScrollView {
+        VerticalLayout {
+            spacing: 16px;
+
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+                    Text { text: "Game"; color: Theme.text; font-size: 16px; font-weight: 700; }
+
+                    Text { text: "Game directory"; color: Theme.text-muted; font-size: 12px; }
+                    game-dir-edit := LineEdit { text: Logic.game-dir; }
+
+                    Text { text: "Java path (\"java\" to use PATH / auto-install)"; color: Theme.text-muted; font-size: 12px; }
+                    java-edit := LineEdit { text: Logic.java-path; }
+
+                    Text { text: "JVM arguments (space separated)"; color: Theme.text-muted; font-size: 12px; }
+                    jvm-edit := LineEdit { text: Logic.jvm-args; }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        PButton {
+                            text: "Save";
+                            primary: true;
+                            clicked => {
+                                Logic.save-settings(game-dir-edit.text, java-edit.text, jvm-edit.text);
+                            }
+                        }
+                    }
+                }
+            }
+
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+                    Text { text: "Appearance"; color: Theme.text; font-size: 16px; font-weight: 700; }
+                    Text { text: "Theme"; color: Theme.text-muted; font-size: 12px; }
+                    theme-combo := ComboBox {
+                        model: Logic.themes;
+                        current-value: Logic.active-theme;
+                        selected(val) => { Logic.select-theme(val); }
+                    }
+                    Text {
+                        text: "Drop *.json palettes in the launcher config 'themes' folder to add more.";
+                        color: Theme.text-dim; font-size: 11px;
+                    }
+                }
+            }
+        }
+    }
+}

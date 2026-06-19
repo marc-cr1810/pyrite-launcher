@@ -1,0 +1,117 @@
+// Shared data structures and the themeable design tokens.
+//
+// `Theme` is the single source of truth for colors. Every component reads from
+// it, and Rust overrides its properties at startup from a JSON palette
+// (built-in default or a user theme). See `src/app/theme.rs`.
+
+export struct AccountItem {
+    uuid: string,
+    username: string,
+    kind: string,      // "Microsoft" or "Offline"
+    active: bool,
+}
+
+export struct InstanceItem {
+    id: string,
+    name: string,
+    version: string,
+    loader: string,    // "" for vanilla, otherwise "Fabric"/"Forge"/"NeoForge"
+    active: bool,
+}
+
+export struct VersionItem {
+    id: string,
+    kind: string,      // "release" / "snapshot" / loader version
+}
+
+export struct LogLine {
+    text: string,
+    level: string,     // "error" / "warn" / "info" / "plain"
+}
+
+export global Theme {
+    // Surfaces
+    in property <color> window-bg: #16161e;
+    in property <color> sidebar-bg: #13131a;
+    in property <color> surface: #1f1f2e;
+    in property <color> surface-alt: #262636;
+    in property <color> surface-hover: #2e2e42;
+    // Text
+    in property <color> text: #e6e6f0;
+    in property <color> text-muted: #a9a9c2;
+    in property <color> text-dim: #6c6c85;
+    // Accent
+    in property <color> accent: #7aa2f7;
+    in property <color> accent-hover: #8fb3ff;
+    in property <color> accent-text: #0d0d14;
+    // Lines / status
+    in property <color> border: #2c2c3e;
+    in property <color> success: #9ece6a;
+    in property <color> warning: #e0af68;
+    in property <color> error: #f7768e;
+
+    // Geometry tokens (not themed via JSON for now)
+    out property <length> radius: 10px;
+    out property <length> radius-sm: 6px;
+    out property <length> gap: 12px;
+    out property <length> pad: 16px;
+}
+
+// Single bridge between the UI and Rust: shared state (properties Rust pushes
+// into the UI) and callbacks (events the UI sends to Rust). Wired in main.rs.
+export global Logic {
+    // --- Accounts ---
+    in property <[AccountItem]> accounts;
+    callback select-account(string /* uuid */);
+    callback remove-account(string /* uuid */);
+    callback add-offline(string /* username */);
+    // Microsoft device-code login dialog
+    in property <bool> ms-active;
+    in-out property <bool> ms-dialog-open;
+    in property <string> ms-user-code;
+    in property <string> ms-verification-uri;
+    in property <string> ms-message;
+    callback start-microsoft();
+    callback cancel-microsoft();
+    callback open-url(string);
+    callback copy-code(string);
+
+    // --- Instances ---
+    in property <[InstanceItem]> instances;
+    callback select-instance(string /* id */);
+    callback delete-instance(string /* id */);
+    // name, game-version, loader ("" = vanilla), loader-version ("" = auto)
+    callback create-instance(string, string, string, string);
+    // Version picker data for the create dialog (plain strings for ComboBox)
+    in property <[string]> version-list;
+    in property <bool> versions-loading;
+    callback load-versions();
+    in property <[string]> loader-version-list;
+    in property <bool> loader-versions-loading;
+    callback load-loader-versions(string /* loader */, string /* game-version */);
+
+    // --- Active selection summary (Play view) ---
+    in property <string> active-account-name;
+    in property <string> active-instance-name;
+    in property <string> active-instance-version;
+    in property <string> active-instance-loader;
+    in property <bool> can-play;
+
+    // --- Launch / progress / logs ---
+    in property <bool> is-busy;
+    in property <string> status-text;
+    in property <bool> progress-active;
+    in property <float> progress-value;     // 0..1
+    in property <[LogLine]> log-lines;
+    callback play();
+    callback clear-logs();
+
+    // --- Settings & theming ---
+    in-out property <string> game-dir;
+    in-out property <string> java-path;
+    in-out property <string> jvm-args;
+    in property <[string]> themes;
+    in-out property <string> active-theme;
+    callback save-settings(string /* game-dir */, string /* java-path */, string /* jvm-args */);
+    callback select-theme(string);
+}

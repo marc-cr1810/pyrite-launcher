@@ -1,0 +1,96 @@
+import { Theme, Logic, LogLine } from "../globals.slint";
+import { Card, PButton, PProgress, PHeading } from "../components.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component PlayView inherits VerticalLayout {
+    padding: 24px;
+    spacing: 20px;
+
+    PHeading { text: "Play"; }
+
+    // Summary + Play
+    Card {
+        height: 150px;
+        HorizontalLayout {
+            padding: 24px;
+            spacing: 24px;
+            VerticalLayout {
+                alignment: center;
+                spacing: 6px;
+                Text {
+                    text: Logic.active-instance-name == "" ? "No instance selected" : Logic.active-instance-name;
+                    color: Theme.text;
+                    font-size: 20px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: Logic.active-instance-version
+                        + (Logic.active-instance-loader == "" ? "" : "  •  " + Logic.active-instance-loader);
+                    color: Theme.text-muted;
+                    font-size: 14px;
+                }
+                Text {
+                    text: "Account: " + (Logic.active-account-name == "" ? "none" : Logic.active-account-name);
+                    color: Theme.text-muted;
+                    font-size: 14px;
+                }
+            }
+            Rectangle { } // spacer
+            VerticalLayout {
+                alignment: center;
+                PButton {
+                    text: Logic.is-busy ? "Working…" : "▶  Play";
+                    primary: true;
+                    enabled: Logic.can-play && !Logic.is-busy;
+                    min-width: 160px;
+                    height: 52px;
+                    clicked => { Logic.play(); }
+                }
+            }
+        }
+    }
+
+    if !Logic.can-play && !Logic.is-busy : Text {
+        text: "Select an account and an instance to play.";
+        color: Theme.warning;
+        font-size: 13px;
+    }
+
+    // Progress
+    if Logic.progress-active : VerticalLayout {
+        spacing: 6px;
+        Text { text: Logic.status-text; color: Theme.text-muted; font-size: 13px; }
+        PProgress { value: Logic.progress-value; }
+    }
+
+    // Logs
+    Text { text: "Game log"; color: Theme.text-muted; font-size: 13px; font-weight: 600; }
+    Card {
+        vertical-stretch: 1;
+        log-scroll := ScrollView {
+            // Auto-scroll to the bottom whenever new lines grow the content.
+            changed viewport-height => {
+                self.viewport-y = min(0, self.visible-height - self.viewport-height);
+            }
+            VerticalLayout {
+                padding: 12px;
+                spacing: 2px;
+                for line in Logic.log-lines : Text {
+                    text: line.text;
+                    color: line.level == "error" ? Theme.error
+                        : line.level == "warn" ? Theme.warning
+                        : line.level == "plain" ? Theme.text-dim
+                        : Theme.text-muted;
+                    font-size: 12px;
+                    font-family: "monospace";
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        alignment: end;
+        PButton { text: "Clear log"; clicked => { Logic.clear-logs(); } }
+    }
+}

@@ -1,0 +1,96 @@
+import { Theme, Logic } from "globals.slint";
+import { PlayView } from "views/play.slint";
+import { AccountsView } from "views/accounts.slint";
+import { InstancesView } from "views/instances.slint";
+import { SettingsView } from "views/settings.slint";
+
+// Re-export so Rust's generated bindings expose these globals/structs.
+export { Theme, Logic }
+export { AccountItem, InstanceItem, VersionItem, LogLine } from "globals.slint";
+
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <bool> selected;
+    callback clicked();
+    height: 44px;
+    border-radius: Theme.radius-sm;
+    background: selected ? Theme.surface-alt : (touch.has-hover ? Theme.surface : transparent);
+    animate background { duration: 100ms; }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 12px;
+        Text {
+            text: root.icon;
+            font-size: 16px;
+            vertical-alignment: center;
+            color: root.selected ? Theme.accent : Theme.text-muted;
+        }
+        Text {
+            text: root.label;
+            font-size: 14px;
+            font-weight: root.selected ? 700 : 500;
+            vertical-alignment: center;
+            color: root.selected ? Theme.text : Theme.text-muted;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Pyrite Launcher";
+    preferred-width: 1100px;
+    preferred-height: 720px;
+    min-width: 860px;
+    min-height: 560px;
+    background: Theme.window-bg;
+
+    property <int> current-view: 0;
+
+    HorizontalLayout {
+        // Sidebar
+        Rectangle {
+            width: 220px;
+            background: Theme.sidebar-bg;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 6px;
+                HorizontalLayout {
+                    padding-bottom: 16px;
+                    spacing: 10px;
+                    Text { text: "◆"; color: Theme.accent; font-size: 22px; vertical-alignment: center; }
+                    Text { text: "Pyrite"; color: Theme.text; font-size: 20px; font-weight: 800; vertical-alignment: center; }
+                }
+                NavItem { label: "Play"; icon: "▶"; selected: root.current-view == 0; clicked => { root.current-view = 0; } }
+                NavItem { label: "Instances"; icon: "▤"; selected: root.current-view == 1; clicked => { root.current-view = 1; } }
+                NavItem { label: "Accounts"; icon: "◴"; selected: root.current-view == 2; clicked => { root.current-view = 2; } }
+                Rectangle { vertical-stretch: 1; }
+                NavItem { label: "Settings"; icon: "⚙"; selected: root.current-view == 3; clicked => { root.current-view = 3; } }
+                // Active account footer
+                Rectangle {
+                    height: 1px;
+                    background: Theme.border;
+                }
+                Text {
+                    text: Logic.active-account-name == "" ? "Not signed in" : Logic.active-account-name;
+                    color: Theme.text-muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // Content
+        Rectangle {
+            background: Theme.window-bg;
+            if root.current-view == 0 : PlayView { }
+            if root.current-view == 1 : InstancesView { }
+            if root.current-view == 2 : AccountsView { }
+            if root.current-view == 3 : SettingsView { }
+        }
+    }
+}
