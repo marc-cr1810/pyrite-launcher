@@ -1,4 +1,4 @@
-import { Theme, Logic, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem } from "../globals.slint";
+import { Theme, Logic, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
 import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
 import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 
@@ -29,6 +29,23 @@ component TabButton inherits Rectangle {
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+}
+
+// Renders a Minecraft `§`-formatted description: one HorizontalLayout row per
+// line, each a run of individually-colored Text spans.
+component FormattedText inherits VerticalLayout {
+    in property <[FmtLine]> lines;
+    for line in root.lines : HorizontalLayout {
+        alignment: start;
+        for span in line.spans : Text {
+            text: span.text;
+            color: span.color;
+            font-size: 11px;
+            font-weight: span.bold ? 700 : 400;
+            font-italic: span.italic;
+            vertical-alignment: center;
+        }
     }
 }
 
@@ -83,7 +100,8 @@ component AssetSection inherits VerticalLayout {
                         horizontal-stretch: 1;
                         spacing: 2px;
                         Text { text: a.display-name; color: a.enabled ? Theme.text : Theme.text-dim; font-size: 14px; font-weight: 600; overflow: elide; }
-                        Text { text: a.description == "" ? a.size : a.description; color: Theme.text-muted; font-size: 11px; overflow: elide; }
+                        if a.description == "" : Text { text: a.size; color: Theme.text-muted; font-size: 11px; overflow: elide; }
+                        if a.description != "" : FormattedText { lines: a.desc-lines; }
                     }
                     VerticalLayout {
                         alignment: center;
@@ -103,11 +121,15 @@ export component InstancesView inherits Rectangle {
     property <bool> dialog-open: false;
     property <bool> confirm-open: false;
     // Detail-pane tab: 0 Settings, 1 Worlds, 2 Resource Packs, 3 Shaders,
-    // 4 Mods, 5 Screenshots.
+    // 4 Mods, 5 Screenshots, 6 Backups.
     property <int> detail-tab: 0;
     // World pending deletion (saves are precious, so deletion is confirmed).
     property <bool> world-confirm-open: false;
     property <string> pending-world;
+    // Backup pending restore (overwrites saves/config, so it is confirmed).
+    property <bool> backup-confirm-open: false;
+    property <string> pending-backup;
+    property <string> pending-backup-date;
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
     // Empty image, used as the "no custom photo" fallback for avatars.
     property <image> no-image;
@@ -320,6 +342,7 @@ export component InstancesView inherits Rectangle {
                     if Logic.inst-supports-shaders : TabButton { text: "Shaders"; selected: root.detail-tab == 3; clicked => { root.detail-tab = 3; } }
                     if Logic.inst-supports-mods : TabButton { text: "Mods"; selected: root.detail-tab == 4; clicked => { root.detail-tab = 4; } }
                     TabButton { text: "Screenshots"; selected: root.detail-tab == 5; clicked => { root.detail-tab = 5; } }
+                    TabButton { text: "Backups"; selected: root.detail-tab == 6; clicked => { root.detail-tab = 6; } }
                     Rectangle { horizontal-stretch: 1; }
                 }
 
@@ -483,7 +506,7 @@ export component InstancesView inherits Rectangle {
                                         horizontal-stretch: 1;
                                         spacing: 2px;
                                         Text { text: m.name; color: m.enabled ? Theme.text : Theme.text-dim; font-size: 14px; font-weight: 600; overflow: elide; }
-                                        Text { text: m.description; color: Theme.text-muted; font-size: 11px; overflow: elide; }
+                                        if m.description != "" : FormattedText { lines: m.desc-lines; }
                                     }
                                     VerticalLayout {
                                         alignment: center;
@@ -532,6 +555,50 @@ export component InstancesView inherits Rectangle {
                                         Text { text: s.created + " · " + s.size; color: Theme.text-muted; font-size: 11px; }
                                     }
                                     VerticalLayout { alignment: center; PButton { text: "Delete"; danger: true; clicked => { Logic.delete-screenshot(root.selected-id, s.filename); } } }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---- Backups tab ----
+                if root.detail-tab == 6 : VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: 10px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Backs up saves, config and options.txt.";
+                            color: Theme.text-dim; font-size: 11px; vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        PButton { text: "+ Create backup"; primary: true; clicked => { Logic.create-backup(root.selected-id); } }
+                    }
+                    if Logic.inst-backups.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: "⟳"; title: "No backups yet";
+                        subtitle: "Create one before risky changes; restore reverts saves and config.";
+                    }
+                    if Logic.inst-backups.length > 0 : ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 6px;
+                            for b in Logic.inst-backups : Rectangle {
+                                height: 56px;
+                                border-radius: Theme.radius-sm;
+                                background: Theme.surface-alt;
+                                HorizontalLayout {
+                                    padding: 10px;
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        spacing: 2px;
+                                        Text { text: b.created; color: Theme.text; font-size: 14px; font-weight: 600; overflow: elide; }
+                                        Text { text: b.size; color: Theme.text-muted; font-size: 11px; }
+                                    }
+                                    VerticalLayout { alignment: center; PButton { text: "Restore"; clicked => { root.pending-backup = b.filename; root.pending-backup-date = b.created; root.backup-confirm-open = true; } } }
+                                    VerticalLayout { alignment: center; PButton { text: "Delete"; danger: true; clicked => { Logic.delete-backup(root.selected-id, b.filename); } } }
                                 }
                             }
                         }
@@ -708,6 +775,31 @@ export component InstancesView inherits Rectangle {
                 clicked => {
                     Logic.delete-world(root.selected-id, root.pending-world);
                     root.world-confirm-open = false;
+                }
+            }
+        }
+    }
+
+    // ---- Backup restore confirmation (overwrites saves/config) ----
+    if root.backup-confirm-open : Dialog {
+        dialog-width: 420px;
+        closed => { root.backup-confirm-open = false; }
+        Text { text: "Restore backup?"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        Text {
+            text: "Restoring the backup from " + root.pending-backup-date + " will overwrite this instance's current saves, config and options.txt.";
+            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { root.backup-confirm-open = false; } }
+            PButton {
+                text: "Restore";
+                primary: true;
+                clicked => {
+                    Logic.restore-backup(root.selected-id, root.pending-backup);
+                    root.backup-confirm-open = false;
                 }
             }
         }

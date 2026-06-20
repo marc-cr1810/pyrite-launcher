@@ -202,6 +202,25 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
             details::delete_screenshot(&st, &weak, id.to_string(), filename.to_string());
         });
     }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_create_backup(move |id| details::create_backup(&st, &weak, id.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_restore_backup(move |id, filename| {
+            details::restore_backup(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_delete_backup(move |id, filename| {
+            details::delete_backup(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
 
     // --- Play ---
     {
@@ -237,5 +256,10 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
         let st = state.clone();
         let weak = ui.as_weak();
         logic.on_select_theme(move |name| settings::select_theme(&st, &weak, name.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_install_java(move |major| settings::install_java(&st, &weak, major));
     }
 }

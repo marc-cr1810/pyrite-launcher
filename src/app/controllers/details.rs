@@ -33,6 +33,7 @@ fn populate(ui: &MainWindow, state: &AppState, id: &str) {
     let shaderpacks = assets::list_shaderpacks(&inst.path).unwrap_or_default();
     let screenshots = assets::list_screenshots(&inst.path).unwrap_or_default();
     let mods = inst.get_mods().unwrap_or_default();
+    let backups = inst.list_backups();
 
     logic.set_detail_id(id.into());
     logic.set_inst_worlds(convert::worlds_model(&inst.path, &worlds));
@@ -46,6 +47,7 @@ fn populate(ui: &MainWindow, state: &AppState, id: &str) {
     ));
     logic.set_inst_screenshots(convert::screenshots_model(&inst.path, &screenshots));
     logic.set_inst_mods(convert::mods_model(&mods));
+    logic.set_inst_backups(convert::backups_model(&inst.path, &backups));
     logic.set_inst_supports_mods(loader.is_some());
     logic.set_inst_supports_shaders(assets::detect_shader_support(&inst.path));
 }
@@ -196,6 +198,56 @@ pub fn remove_mod(state: &AppState, weak: &Weak<MainWindow>, id: String, filenam
             }
             Err(e) => status(&weak, format!("Failed: {e}")),
         }
+    });
+}
+
+pub fn create_backup(state: &AppState, weak: &Weak<MainWindow>, id: String) {
+    let state = state.clone();
+    let weak = weak.clone();
+    state.rt.clone().spawn(async move {
+        let path = instance_path(&state, &id);
+        let result = match Instance::load(&id, path) {
+            Ok(inst) => inst.backup(),
+            Err(e) => Err(e),
+        };
+        match result {
+            Ok(_) => {
+                status(&weak, "Backup created.");
+                load(&state, &weak, id);
+            }
+            Err(e) => status(&weak, format!("Failed: {e}")),
+        }
+    });
+}
+
+pub fn restore_backup(state: &AppState, weak: &Weak<MainWindow>, id: String, filename: String) {
+    let state = state.clone();
+    let weak = weak.clone();
+    state.rt.clone().spawn(async move {
+        let path = instance_path(&state, &id);
+        let result = match Instance::load(&id, path) {
+            Ok(inst) => inst.restore(&filename),
+            Err(e) => Err(e),
+        };
+        match result {
+            Ok(_) => {
+                status(&weak, "Backup restored.");
+                load(&state, &weak, id);
+            }
+            Err(e) => status(&weak, format!("Failed: {e}")),
+        }
+    });
+}
+
+pub fn delete_backup(state: &AppState, weak: &Weak<MainWindow>, id: String, filename: String) {
+    mutate(state, weak, id, move |path| {
+        let file = path.join("backups").join(&filename);
+        if !file.exists() {
+            return Err(format!("Backup '{filename}' not found."));
+        }
+        std::fs::remove_file(&file)
+            .map(|_| "Backup deleted.".to_string())
+            .map_err(|e| format!("Failed to delete backup: {e}"))
     });
 }
 

@@ -12,7 +12,10 @@ use crate::app::state::AppState;
 use crate::core::assets::{AssetInfo, ScreenshotInfo, WorldInfo};
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::{Instance, InstanceMod};
-use crate::{AccountItem, AssetItem, InstanceItem, LogLine, ModItem, ScreenshotItem, WorldItem};
+use crate::{
+    AccountItem, AssetItem, BackupItem, FmtLine, FmtSpan, InstanceItem, LogLine, ModItem,
+    ScreenshotItem, WorldItem,
+};
 
 /// Glyph to render in place of the monogram for a built-in instance icon.
 /// Empty string means "no glyph" (use the monogram initial, or a custom image).
@@ -138,6 +141,90 @@ fn strip_disabled(filename: &str) -> &str {
     filename.strip_suffix(".disabled").unwrap_or(filename)
 }
 
+/// Default span color when no `§` color code is active (matches Theme.text-muted).
+const DEFAULT_FMT_COLOR: (u8, u8, u8) = (0xa9, 0xa9, 0xc2);
+
+/// Map a Minecraft `§` color code to RGB. Returns `None` for non-color codes.
+fn mc_color(code: char) -> Option<(u8, u8, u8)> {
+    Some(match code {
+        '0' => (0x00, 0x00, 0x00),
+        '1' => (0x00, 0x00, 0xaa),
+        '2' => (0x00, 0xaa, 0x00),
+        '3' => (0x00, 0xaa, 0xaa),
+        '4' => (0xaa, 0x00, 0x00),
+        '5' => (0xaa, 0x00, 0xaa),
+        '6' => (0xff, 0xaa, 0x00),
+        '7' => (0xaa, 0xaa, 0xaa),
+        '8' => (0x55, 0x55, 0x55),
+        '9' => (0x55, 0x55, 0xff),
+        'a' => (0x55, 0xff, 0x55),
+        'b' => (0x55, 0xff, 0xff),
+        'c' => (0xff, 0x55, 0x55),
+        'd' => (0xff, 0x55, 0xff),
+        'e' => (0xff, 0xff, 0x55),
+        'f' => (0xff, 0xff, 0xff),
+        _ => return None,
+    })
+}
+
+/// Parse a Minecraft `§`-formatted string into colored lines/spans for rendering.
+/// Color codes set the color and reset bold/italic (MC semantics); `l`/`o` add
+/// bold/italic; `r` resets all. Other codes (`k`/`m`/`n`) are ignored.
+pub fn parse_formatted(s: &str) -> ModelRc<FmtLine> {
+    let lines: Vec<FmtLine> = s
+        .split('\n')
+        .map(|line| {
+            let mut spans: Vec<FmtSpan> = Vec::new();
+            let mut buf = String::new();
+            let mut color = DEFAULT_FMT_COLOR;
+            let mut bold = false;
+            let mut italic = false;
+
+            let flush = |spans: &mut Vec<FmtSpan>, buf: &mut String, color, bold, italic| {
+                if !buf.is_empty() {
+                    let (r, g, b) = color;
+                    spans.push(FmtSpan {
+                        text: std::mem::take(buf).into(),
+                        color: Color::from_rgb_u8(r, g, b),
+                        bold,
+                        italic,
+                    });
+                }
+            };
+
+            let mut chars = line.chars().peekable();
+            while let Some(c) = chars.next() {
+                if c == '§' {
+                    if let Some(code) = chars.next() {
+                        flush(&mut spans, &mut buf, color, bold, italic);
+                        let code = code.to_ascii_lowercase();
+                        if let Some(rgb) = mc_color(code) {
+                            color = rgb;
+                            bold = false;
+                            italic = false;
+                        } else if code == 'l' {
+                            bold = true;
+                        } else if code == 'o' {
+                            italic = true;
+                        } else if code == 'r' {
+                            color = DEFAULT_FMT_COLOR;
+                            bold = false;
+                            italic = false;
+                        }
+                    }
+                } else {
+                    buf.push(c);
+                }
+            }
+            flush(&mut spans, &mut buf, color, bold, italic);
+            FmtLine {
+                spans: ModelRc::new(VecModel::from(spans)),
+            }
+        })
+        .collect();
+    ModelRc::new(VecModel::from(lines))
+}
+
 /// Remove Minecraft formatting codes (`§` followed by a code char) so pack/mod
 /// descriptions read as plain text instead of showing raw `§6`, `§l`, etc.
 fn strip_mc_formatting(s: &str) -> String {
@@ -214,6 +301,7 @@ pub fn assets_model(dir: &Path, assets: &[AssetInfo]) -> ModelRc<AssetItem> {
             size: human_size(a.size_bytes).into(),
             enabled: a.enabled,
             description: strip_mc_formatting(a.description.as_deref().unwrap_or_default()).into(),
+            desc_lines: parse_formatted(a.description.as_deref().unwrap_or_default()),
             icon: load_pack_icon(&dir.join(&a.filename)),
         })
         .collect();
@@ -234,6 +322,30 @@ pub fn screenshots_model(instance_path: &Path, shots: &[ScreenshotInfo]) -> Mode
     ModelRc::new(VecModel::from(items))
 }
 
+/// Parse the `backup_YYYYMMDD_HHMMSS.zip` timestamp into a friendly date, or
+/// `None` if the name doesn't match.
+fn parse_backup_timestamp(filename: &str) -> Option<String> {
+    let stamp = filename.strip_prefix("backup_")?.strip_suffix(".zip")?;
+    let dt = chrono::NaiveDateTime::parse_from_str(stamp, "%Y%m%d_%H%M%S").ok()?;
+    Some(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub fn backups_model(instance_path: &Path, backups: &[String]) -> ModelRc<BackupItem> {
+    let dir = instance_path.join("backups");
+    let items: Vec<BackupItem> = backups
+        .iter()
+        .map(|name| {
+            let size = std::fs::metadata(dir.join(name)).map(|m| m.len()).unwrap_or(0);
+            BackupItem {
+                filename: name.clone().into(),
+                created: parse_backup_timestamp(name).unwrap_or_else(|| name.clone()).into(),
+                size: human_size(size).into(),
+            }
+        })
+        .collect();
+    ModelRc::new(VecModel::from(items))
+}
+
 pub fn mods_model(mods: &[InstanceMod]) -> ModelRc<ModItem> {
     let items: Vec<ModItem> = mods
         .iter()
@@ -242,6 +354,7 @@ pub fn mods_model(mods: &[InstanceMod]) -> ModelRc<ModItem> {
             name: m.metadata.name.clone().into(),
             version: m.metadata.version.clone().into(),
             description: strip_mc_formatting(m.metadata.description.as_deref().unwrap_or_default()).into(),
+            desc_lines: parse_formatted(m.metadata.description.as_deref().unwrap_or_default()),
             enabled: m.enabled,
         })
         .collect();
@@ -276,5 +389,55 @@ fn log_level(line: &str) -> &'static str {
         "plain"
     } else {
         "info"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slint::Model;
+
+    #[test]
+    fn test_human_size() {
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(1024), "1.0 KB");
+        assert_eq!(human_size(1024 * 1024 * 3), "3.0 MB");
+    }
+
+    #[test]
+    fn test_strip_mc_formatting() {
+        assert_eq!(strip_mc_formatting("§6Gold §lBold§r plain"), "Gold Bold plain");
+        assert_eq!(strip_mc_formatting("no codes"), "no codes");
+    }
+
+    #[test]
+    fn test_parse_formatted_colors_and_lines() {
+        let model = parse_formatted("§6Gold§r white\nsecond §lbold");
+        assert_eq!(model.row_count(), 2);
+
+        // Line 1: "Gold" (gold) + " white" (default after reset).
+        let line0 = model.row_data(0).unwrap();
+        assert_eq!(line0.spans.row_count(), 2);
+        let gold = line0.spans.row_data(0).unwrap();
+        assert_eq!(gold.text.as_str(), "Gold");
+        assert_eq!(gold.color, Color::from_rgb_u8(0xff, 0xaa, 0x00));
+        assert!(!gold.bold);
+        let white = line0.spans.row_data(1).unwrap();
+        assert_eq!(white.text.as_str(), " white");
+
+        // Line 2: "second " (plain) + "bold" (bold).
+        let line1 = model.row_data(1).unwrap();
+        assert_eq!(line1.spans.row_count(), 2);
+        assert!(line1.spans.row_data(1).unwrap().bold);
+    }
+
+    #[test]
+    fn test_parse_formatted_plain() {
+        let model = parse_formatted("just text");
+        assert_eq!(model.row_count(), 1);
+        let line = model.row_data(0).unwrap();
+        assert_eq!(line.spans.row_count(), 1);
+        assert_eq!(line.spans.row_data(0).unwrap().text.as_str(), "just text");
     }
 }

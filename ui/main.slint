@@ -8,7 +8,7 @@ import { SettingsView } from "views/settings.slint";
 // Re-export so Rust's generated bindings expose these globals/structs.
 export { Theme, Logic }
 export { AccountItem, InstanceItem, VersionItem, LogLine, IconOption } from "globals.slint";
-export { WorldItem, AssetItem, ScreenshotItem, ModItem } from "globals.slint";
+export { WorldItem, AssetItem, ScreenshotItem, ModItem, FmtSpan, FmtLine, BackupItem } from "globals.slint";
 
 component NavItem inherits Rectangle {
     in property <string> label;

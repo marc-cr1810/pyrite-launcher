@@ -42,6 +42,49 @@ export component SettingsView inherits VerticalLayout {
                 VerticalLayout {
                     padding: 20px;
                     spacing: 12px;
+                    Text { text: "Java runtime"; color: Theme.text; font-size: 16px; font-weight: 700; }
+                    Text {
+                        text: "Download an Adoptium JRE into the game folder's 'runtime' directory and set it as the Java path above.";
+                        color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        VerticalLayout {
+                            spacing: 6px;
+                            width: 150px;
+                            Text { text: "Major version"; color: Theme.text-muted; font-size: 12px; }
+                            java-ver-combo := ComboBox {
+                                model: ["21", "17", "8"];
+                                current-index: 0;
+                                enabled: !Logic.java-installing;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            horizontal-stretch: 1;
+                            HorizontalLayout {
+                                alignment: end;
+                                PButton {
+                                    text: Logic.java-installing ? "Downloading…" : "Download & use";
+                                    primary: true;
+                                    enabled: !Logic.java-installing;
+                                    clicked => {
+                                        Logic.install-java(
+                                            java-ver-combo.current-value == "21" ? 21
+                                            : java-ver-combo.current-value == "17" ? 17
+                                            : 8);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
                     Text { text: "Appearance"; color: Theme.text; font-size: 16px; font-weight: 700; }
                     Text { text: "Theme"; color: Theme.text-muted; font-size: 12px; }
                     theme-combo := ComboBox {

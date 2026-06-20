@@ -38,6 +38,59 @@ pub fn save(
     });
 }
 
+/// Download an Adoptium JRE for the given major version into `<game_dir>/runtime`
+/// and set it as the active Java path. Streams progress into the status bar.
+pub fn install_java(state: &AppState, weak: &Weak<MainWindow>, major: i32) {
+    if major <= 0 {
+        return;
+    }
+    let major = major as u32;
+    let state = state.clone();
+    let weak = weak.clone();
+    state.rt.clone().spawn(async move {
+        set_java_installing(&weak, true);
+        ui::progress_indeterminate_async(&weak, true);
+
+        let game_dir = state.game_dir();
+        let weak_log = weak.clone();
+        let log_fn = move |msg: String| {
+            let w = weak_log.clone();
+            let _ = w.upgrade_in_event_loop(move |ui| ui::set_status(&ui, msg));
+        };
+
+        match crate::core::java::install_java_if_needed(&game_dir, major, log_fn).await {
+            Ok(path) => {
+                {
+                    let mut cfg = state.config.lock().unwrap();
+                    cfg.java_path = path.clone();
+                    let _ = cfg.save();
+                }
+                let st = state.clone();
+                let summary = format!("Java {major} ready: {}", path.display());
+                let _ = weak.upgrade_in_event_loop(move |ui| {
+                    ui::refresh_settings(&ui, &st.config.lock().unwrap());
+                    ui::set_status(&ui, summary);
+                });
+            }
+            Err(e) => status(&weak, format!("Java install failed: {e}")),
+        }
+
+        set_java_installing(&weak, false);
+        ui::progress_indeterminate_async(&weak, false);
+    });
+}
+
+fn set_java_installing(weak: &Weak<MainWindow>, installing: bool) {
+    let _ = weak.upgrade_in_event_loop(move |ui| {
+        ui.global::<crate::Logic>().set_java_installing(installing);
+    });
+}
+
+fn status(weak: &Weak<MainWindow>, text: impl Into<String>) {
+    let text = text.into();
+    let _ = weak.upgrade_in_event_loop(move |ui| ui::set_status(&ui, text));
+}
+
 pub fn select_theme(state: &AppState, weak: &Weak<MainWindow>, name: String) {
     *state.active_theme.lock().unwrap() = name.clone();
     // Persist active theme name in a sidecar file next to config.

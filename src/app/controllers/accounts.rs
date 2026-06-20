@@ -146,6 +146,48 @@ pub fn start_microsoft(state: &AppState, weak: &Weak<MainWindow>) {
     });
 }
 
+/// Ensure a Microsoft account's token is valid, refreshing it if it has expired
+/// (or is within 60s of doing so). Returns the (possibly updated) account and
+/// persists any refresh to config. Offline accounts are returned unchanged.
+pub async fn refresh_if_needed(state: &AppState, account: &Account) -> Result<Account, String> {
+    let ms = match (&account.account_type, &account.microsoft_auth) {
+        (AccountType::Microsoft, Some(ms)) => ms,
+        _ => return Ok(account.clone()),
+    };
+
+    let needs_refresh = match ms.expires_at {
+        Some(exp) => exp <= chrono::Utc::now() + chrono::Duration::seconds(60),
+        None => true,
+    };
+    if !needs_refresh {
+        return Ok(account.clone());
+    }
+
+    let api = ApiClient::new();
+    let token = api.refresh_token(&ms.refresh_token).await?;
+    let mc = api.login_with_microsoft(&token.access_token).await?;
+
+    let updated = Account {
+        uuid: account.uuid.clone(),
+        username: account.username.clone(),
+        account_type: AccountType::Microsoft,
+        microsoft_auth: Some(MicrosoftAuth {
+            access_token: mc.access_token,
+            refresh_token: token.refresh_token,
+            expires_at: Some(chrono::Utc::now() + chrono::Duration::seconds(mc.expires_in as i64)),
+        }),
+    };
+
+    {
+        let mut cfg = state.config.lock().unwrap();
+        if let Some(acc) = cfg.accounts.iter_mut().find(|a| a.uuid == updated.uuid) {
+            *acc = updated.clone();
+        }
+        let _ = cfg.save();
+    }
+    Ok(updated)
+}
+
 fn refresh(state: &AppState, weak: &Weak<MainWindow>) {
     let state = state.clone();
     let _ = weak.upgrade_in_event_loop(move |ui| ui::refresh_all(&ui, &state));
