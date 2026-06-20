@@ -40,6 +40,41 @@ export struct IconOption {
     glyph: string,
 }
 
+// A Minecraft world (save) inside an instance's `saves/` dir.
+export struct WorldItem {
+    folder-name: string,
+    last-played: string,
+    size: string,          // pre-formatted human size
+    icon: image,           // saves/<world>/icon.png, empty if none
+}
+
+// A resource pack or shader pack file/dir. `display-name` strips ".disabled".
+export struct AssetItem {
+    filename: string,      // on-disk name (may end in ".disabled")
+    display-name: string,
+    size: string,
+    enabled: bool,
+    description: string,
+    icon: image,           // the pack's pack.png, empty if none
+}
+
+// A screenshot, with a decoded thumbnail.
+export struct ScreenshotItem {
+    filename: string,
+    created: string,
+    size: string,
+    image: image,
+}
+
+// An installed mod jar with parsed metadata.
+export struct ModItem {
+    filename: string,      // on-disk name (may end in ".disabled")
+    name: string,
+    version: string,
+    description: string,
+    enabled: bool,
+}
+
 export struct VersionItem {
     id: string,
     kind: string,      // "release" / "snapshot" / loader version
@@ -116,6 +151,32 @@ export global Logic {
     in property <[string]> loader-version-list;
     in property <bool> loader-versions-loading;
     callback load-loader-versions(string /* loader */, string /* game-version */);
+
+    // --- Instance content management (detail pane tabs) ---
+    // Which instance the lists below belong to (so stale data isn't shown).
+    in property <string> detail-id;
+    in property <[WorldItem]> inst-worlds;
+    in property <[AssetItem]> inst-resourcepacks;
+    in property <[AssetItem]> inst-shaderpacks;
+    in property <[ScreenshotItem]> inst-screenshots;
+    in property <[ModItem]> inst-mods;
+    in property <bool> inst-supports-mods;     // instance has a mod loader
+    in property <bool> inst-supports-shaders;  // a shader loader (Iris/OptiFine) is present
+    // Load (or reload) every list above for the given instance.
+    callback load-instance-details(string /* id */);
+    // Open a subdir of the instance in the system file manager.
+    callback open-instance-dir(string /* id */, string /* subdir */);
+    // Native multi-file picker; copies into the kind's subdir.
+    callback add-files(string /* id */, string /* kind: resourcepacks|shaderpacks|mods */);
+    callback delete-world(string /* id */, string /* folder */);
+    callback backup-world(string /* id */, string /* folder */);
+    callback toggle-resourcepack(string /* id */, string /* filename */);
+    callback delete-resourcepack(string /* id */, string /* filename */);
+    callback toggle-shaderpack(string /* id */, string /* filename */);
+    callback delete-shaderpack(string /* id */, string /* filename */);
+    callback toggle-mod(string /* id */, string /* filename */, bool /* enable */);
+    callback remove-mod(string /* id */, string /* filename */);
+    callback delete-screenshot(string /* id */, string /* filename */);
 
     // --- Instance icon picker (shared by create + edit; one is open at a time) ---
     in property <[IconOption]> icon-options;       // built-in grid, set at startup

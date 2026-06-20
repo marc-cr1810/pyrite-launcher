@@ -2,14 +2,17 @@
 
 use std::path::Path;
 
-use slint::{Color, Image, ModelRc, SharedString, VecModel};
+use std::io::Read;
+
+use slint::{Color, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use crate::app::avatars;
 use crate::app::icons;
 use crate::app::state::AppState;
+use crate::core::assets::{AssetInfo, ScreenshotInfo, WorldInfo};
 use crate::core::config::{AccountType, Config};
-use crate::core::instance::Instance;
-use crate::{AccountItem, InstanceItem, LogLine};
+use crate::core::instance::{Instance, InstanceMod};
+use crate::{AccountItem, AssetItem, InstanceItem, LogLine, ModItem, ScreenshotItem, WorldItem};
 
 /// Glyph to render in place of the monogram for a built-in instance icon.
 /// Empty string means "no glyph" (use the monogram initial, or a custom image).
@@ -109,6 +112,122 @@ pub fn instances_model(config: &Config) -> ModelRc<InstanceItem> {
                 icon_glyph: instance_icon_glyph(&inst.config.icon),
                 icon_image: instance_icon_image(&inst.path, &inst.config.icon),
             }
+        })
+        .collect();
+    ModelRc::new(VecModel::from(items))
+}
+
+/// Format a byte count as a short human-readable size (e.g. "4.2 MB").
+pub fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} {}", bytes, UNITS[0])
+    } else {
+        format!("{:.1} {}", size, UNITS[unit])
+    }
+}
+
+/// Strip a trailing ".disabled" for display, leaving the user-facing name.
+fn strip_disabled(filename: &str) -> &str {
+    filename.strip_suffix(".disabled").unwrap_or(filename)
+}
+
+/// Decode PNG bytes into a `slint::Image`, or an empty image on failure.
+fn image_from_png_bytes(bytes: &[u8]) -> Image {
+    match image::load_from_memory(bytes) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            let mut buf = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+            buf.make_mut_bytes().copy_from_slice(&rgba.into_raw());
+            Image::from_rgba8(buf)
+        }
+        Err(_) => Image::default(),
+    }
+}
+
+/// The `pack.png` thumbnail for a resource/shader pack, or an empty image when
+/// none exists. Handles both folder packs (`<pack>/pack.png`) and zip packs
+/// (works even with a trailing `.disabled` rename).
+fn load_pack_icon(asset_path: &std::path::Path) -> Image {
+    if asset_path.is_dir() {
+        return Image::load_from_path(&asset_path.join("pack.png")).unwrap_or_default();
+    }
+    let Ok(file) = std::fs::File::open(asset_path) else {
+        return Image::default();
+    };
+    let Ok(mut archive) = zip::ZipArchive::new(file) else {
+        return Image::default();
+    };
+    let Ok(mut entry) = archive.by_name("pack.png") else {
+        return Image::default();
+    };
+    let mut bytes = Vec::new();
+    if entry.read_to_end(&mut bytes).is_err() {
+        return Image::default();
+    }
+    image_from_png_bytes(&bytes)
+}
+
+pub fn worlds_model(instance_path: &Path, worlds: &[WorldInfo]) -> ModelRc<WorldItem> {
+    let saves = instance_path.join("saves");
+    let items: Vec<WorldItem> = worlds
+        .iter()
+        .map(|w| WorldItem {
+            folder_name: w.folder_name.clone().into(),
+            last_played: w.last_played.clone().into(),
+            size: human_size(w.size_bytes).into(),
+            icon: Image::load_from_path(&saves.join(&w.folder_name).join("icon.png"))
+                .unwrap_or_default(),
+        })
+        .collect();
+    ModelRc::new(VecModel::from(items))
+}
+
+pub fn assets_model(dir: &Path, assets: &[AssetInfo]) -> ModelRc<AssetItem> {
+    let items: Vec<AssetItem> = assets
+        .iter()
+        .map(|a| AssetItem {
+            filename: a.filename.clone().into(),
+            display_name: strip_disabled(&a.filename).into(),
+            size: human_size(a.size_bytes).into(),
+            enabled: a.enabled,
+            description: a.description.clone().unwrap_or_default().into(),
+            icon: load_pack_icon(&dir.join(&a.filename)),
+        })
+        .collect();
+    ModelRc::new(VecModel::from(items))
+}
+
+pub fn screenshots_model(instance_path: &Path, shots: &[ScreenshotInfo]) -> ModelRc<ScreenshotItem> {
+    let dir = instance_path.join("screenshots");
+    let items: Vec<ScreenshotItem> = shots
+        .iter()
+        .map(|s| ScreenshotItem {
+            filename: s.filename.clone().into(),
+            created: s.created.clone().into(),
+            size: human_size(s.size_bytes).into(),
+            image: Image::load_from_path(&dir.join(&s.filename)).unwrap_or_default(),
+        })
+        .collect();
+    ModelRc::new(VecModel::from(items))
+}
+
+pub fn mods_model(mods: &[InstanceMod]) -> ModelRc<ModItem> {
+    let items: Vec<ModItem> = mods
+        .iter()
+        .map(|m| ModItem {
+            filename: m.filename.clone().into(),
+            name: m.metadata.name.clone().into(),
+            version: m.metadata.version.clone().into(),
+            description: m.metadata.description.clone().unwrap_or_default().into(),
+            enabled: m.enabled,
         })
         .collect();
     ModelRc::new(VecModel::from(items))

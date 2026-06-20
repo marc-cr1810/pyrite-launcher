@@ -273,6 +273,19 @@ fn toggle_asset_in_dir(dir_path: &Path, filename: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn delete_asset_in_dir(dir_path: &Path, filename: &str) -> Result<(), String> {
+    let path = dir_path.join(filename);
+    if !path.exists() {
+        return Err(format!("Asset file '{}' not found.", filename));
+    }
+    if path.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete asset: {}", e))?;
+    } else {
+        fs::remove_file(&path).map_err(|e| format!("Failed to delete asset: {}", e))?;
+    }
+    Ok(())
+}
+
 pub fn list_resourcepacks(instance_path: &Path) -> Result<Vec<AssetInfo>, String> {
     list_assets_in_dir(&instance_path.join("resourcepacks"))
 }
@@ -281,12 +294,20 @@ pub fn toggle_resourcepack(instance_path: &Path, filename: &str) -> Result<(), S
     toggle_asset_in_dir(&instance_path.join("resourcepacks"), filename)
 }
 
+pub fn delete_resourcepack(instance_path: &Path, filename: &str) -> Result<(), String> {
+    delete_asset_in_dir(&instance_path.join("resourcepacks"), filename)
+}
+
 pub fn list_shaderpacks(instance_path: &Path) -> Result<Vec<AssetInfo>, String> {
     list_assets_in_dir(&instance_path.join("shaderpacks"))
 }
 
 pub fn toggle_shaderpack(instance_path: &Path, filename: &str) -> Result<(), String> {
     toggle_asset_in_dir(&instance_path.join("shaderpacks"), filename)
+}
+
+pub fn delete_shaderpack(instance_path: &Path, filename: &str) -> Result<(), String> {
+    delete_asset_in_dir(&instance_path.join("shaderpacks"), filename)
 }
 
 pub fn list_screenshots(instance_path: &Path) -> Result<Vec<ScreenshotInfo>, String> {
@@ -436,6 +457,12 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].filename, "pack1.zip");
         assert!(list[0].enabled);
+
+        // Delete
+        delete_resourcepack(&inst_path, "pack1.zip").unwrap();
+        let list = list_resourcepacks(&inst_path).unwrap();
+        assert!(list.is_empty());
+        assert!(delete_resourcepack(&inst_path, "pack1.zip").is_err());
 
         let _ = fs::remove_dir_all(&inst_path);
     }

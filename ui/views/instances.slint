@@ -1,10 +1,113 @@
-import { Theme, Logic, InstanceItem } from "../globals.slint";
+import { Theme, Logic, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem } from "../globals.slint";
 import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
 import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
+
+// One tab in the detail-pane tab bar, with an underline accent when active.
+component TabButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    horizontal-stretch: 0;
+    min-width: t.preferred-width + 22px;
+    border-radius: Theme.radius-sm;
+    background: root.selected ? Theme.surface-alt : (touch.has-hover ? Theme.surface-hover : transparent);
+    animate background { duration: 100ms; }
+    t := Text {
+        text: root.text;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        color: root.selected ? Theme.text : Theme.text-muted;
+        font-size: 13px;
+        font-weight: root.selected ? 700 : 500;
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        height: 2px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A list section shared by Resource Packs and Shaders: an Add/Open header, then
+// rows with an enable/disable toggle and delete. Emits filename-keyed actions.
+component AssetSection inherits VerticalLayout {
+    in property <[AssetItem]> model;
+    in property <string> empty-title;
+    callback add();
+    callback openf();
+    callback toggle(string /* filename */);
+    callback remove(string /* filename */);
+    spacing: 10px;
+
+    HorizontalLayout {
+        spacing: 8px;
+        Rectangle { horizontal-stretch: 1; }
+        PButton { text: "+ Add…"; clicked => { root.add(); } }
+        PButton { text: "Open folder"; clicked => { root.openf(); } }
+    }
+    if root.model.length == 0 : EmptyState {
+        vertical-stretch: 1;
+        icon: "▦";
+        title: root.empty-title;
+        subtitle: "Add a file, or open the folder to drop one in.";
+    }
+    if root.model.length > 0 : ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            spacing: 6px;
+            for a in root.model : Rectangle {
+                height: 60px;
+                border-radius: Theme.radius-sm;
+                background: Theme.surface-alt;
+                HorizontalLayout {
+                    padding: 10px;
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: Theme.radius-sm;
+                            background: Theme.surface;
+                            clip: true;
+                            Text { width: 100%; height: 100%; text: "▦"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 18px; }
+                            Image { width: 100%; height: 100%; source: a.icon; image-fit: contain; }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        Text { text: a.display-name; color: a.enabled ? Theme.text : Theme.text-dim; font-size: 14px; font-weight: 600; overflow: elide; }
+                        Text { text: a.description == "" ? a.size : a.description; color: Theme.text-muted; font-size: 11px; overflow: elide; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        PButton { text: a.enabled ? "Disable" : "Enable"; clicked => { root.toggle(a.filename); } }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        PButton { text: "Delete"; danger: true; clicked => { root.remove(a.filename); } }
+                    }
+                }
+            }
+        }
+    }
+}
 
 export component InstancesView inherits Rectangle {
     property <bool> dialog-open: false;
     property <bool> confirm-open: false;
+    // Detail-pane tab: 0 Settings, 1 Worlds, 2 Resource Packs, 3 Shaders,
+    // 4 Mods, 5 Screenshots.
+    property <int> detail-tab: 0;
+    // World pending deletion (saves are precious, so deletion is confirmed).
+    property <bool> world-confirm-open: false;
+    property <string> pending-world;
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
     // Empty image, used as the "no custom photo" fallback for avatars.
     property <image> no-image;
@@ -65,7 +168,9 @@ export component InstancesView inherits Rectangle {
         root.edit-java-path = inst.java-path;
         root.edit-pre-launch = inst.pre-launch;
         root.edit-post-exit = inst.post-exit;
+        root.detail-tab = 0;
         root.seed-pending-from-selection();
+        Logic.load-instance-details(inst.id);
     }
 
     HorizontalLayout {
@@ -160,117 +265,273 @@ export component InstancesView inherits Rectangle {
                 subtitle: "Pick an instance on the left to view and edit its settings.";
             }
 
-            if root.selected-id != "" : ScrollView {
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 14px;
+            if root.selected-id != "" : VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
 
-                    // Header: avatar (live icon) + name + version/loader.
-                    HorizontalLayout {
+                // Header: avatar (live icon) + name + version/loader.
+                HorizontalLayout {
+                    spacing: 14px;
+                    VerticalLayout {
+                        alignment: center;
+                        Avatar {
+                            initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : root.sel-initial;
+                            tint: root.sel-color;
+                            size: 52px;
+                            selected: root.sel-active;
+                            photo: Logic.pending-icon-id == "custom" ? Logic.pending-icon-image : root.no-image;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+                        Text { text: root.edit-name; color: Theme.text; font-size: 20px; font-weight: 700; overflow: elide; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            Text { text: root.sel-version; color: Theme.text-muted; font-size: 13px; vertical-alignment: center; }
+                            if root.sel-loader != "" : LoaderBadge { loader: root.sel-loader; }
+                            if root.sel-active : Text { text: "● active"; color: Theme.success; font-size: 12px; vertical-alignment: center; }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        PButton {
+                            text: root.sel-active ? "Active" : "Use";
+                            primary: !root.sel-active;
+                            enabled: !root.sel-active;
+                            clicked => {
+                                Logic.select-instance(root.selected-id);
+                                root.sel-active = true;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // Tab bar. Shaders/Mods are hidden when not applicable.
+                HorizontalLayout {
+                    spacing: 4px;
+                    TabButton { text: "Settings"; selected: root.detail-tab == 0; clicked => { root.detail-tab = 0; } }
+                    TabButton { text: "Worlds"; selected: root.detail-tab == 1; clicked => { root.detail-tab = 1; } }
+                    TabButton { text: "Resource Packs"; selected: root.detail-tab == 2; clicked => { root.detail-tab = 2; } }
+                    if Logic.inst-supports-shaders : TabButton { text: "Shaders"; selected: root.detail-tab == 3; clicked => { root.detail-tab = 3; } }
+                    if Logic.inst-supports-mods : TabButton { text: "Mods"; selected: root.detail-tab == 4; clicked => { root.detail-tab = 4; } }
+                    TabButton { text: "Screenshots"; selected: root.detail-tab == 5; clicked => { root.detail-tab = 5; } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+
+                // ---- Settings tab ----
+                if root.detail-tab == 0 : ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
                         spacing: 14px;
-                        VerticalLayout {
-                            alignment: center;
-                            Avatar {
-                                initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : root.sel-initial;
-                                tint: root.sel-color;
-                                size: 52px;
-                                selected: root.sel-active;
-                                photo: Logic.pending-icon-id == "custom" ? Logic.pending-icon-image : root.no-image;
-                            }
+
+                        IconPicker {
+                            derived-initial: root.sel-initial;
+                            derived-color: root.sel-color;
                         }
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 4px;
-                            horizontal-stretch: 1;
-                            Text { text: root.edit-name; color: Theme.text; font-size: 20px; font-weight: 700; overflow: elide; }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                alignment: start;
-                                Text { text: root.sel-version; color: Theme.text-muted; font-size: 13px; vertical-alignment: center; }
-                                if root.sel-loader != "" : LoaderBadge { loader: root.sel-loader; }
-                                if root.sel-active : Text { text: "● active"; color: Theme.success; font-size: 12px; vertical-alignment: center; }
-                            }
+
+                        Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
+                        name-edit := LineEdit { text <=> root.edit-name; placeholder-text: "My instance"; }
+
+                        Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
+                        jvm-edit := LineEdit { text <=> root.edit-jvm-args; placeholder-text: "-Xmx4G -XX:+UseG1GC"; }
+
+                        Text { text: "Java path"; color: Theme.text-muted; font-size: 12px; }
+                        java-edit := LineEdit { text <=> root.edit-java-path; placeholder-text: "Leave blank to use the default Java"; }
+
+                        Text { text: "Pre-launch command"; color: Theme.text-muted; font-size: 12px; }
+                        pre-edit := LineEdit { text <=> root.edit-pre-launch; placeholder-text: "Optional command run before launch"; }
+
+                        Text { text: "Post-exit command"; color: Theme.text-muted; font-size: 12px; }
+                        post-edit := LineEdit { text <=> root.edit-post-exit; placeholder-text: "Optional command run after the game exits"; }
+
+                        Text {
+                            text: "To change the Minecraft version or mod loader, create a new instance.";
+                            color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
                         }
-                        VerticalLayout {
-                            alignment: center;
+
+                        HorizontalLayout {
+                            spacing: 10px;
+                            padding-top: 4px;
+                            PButton { text: "Delete"; danger: true; clicked => { root.confirm-open = true; } }
+                            Rectangle { horizontal-stretch: 1; }
                             PButton {
-                                text: root.sel-active ? "Active" : "Use";
-                                primary: !root.sel-active;
-                                enabled: !root.sel-active;
+                                text: "Save changes";
+                                primary: true;
+                                enabled: root.edit-name != "";
                                 clicked => {
-                                    Logic.select-instance(root.selected-id);
-                                    root.sel-active = true;
+                                    Logic.edit-instance(
+                                        root.selected-id,
+                                        root.edit-name,
+                                        root.edit-jvm-args,
+                                        root.edit-java-path,
+                                        root.edit-pre-launch,
+                                        root.edit-post-exit,
+                                        Logic.pending-icon-id);
                                 }
                             }
                         }
                     }
+                }
 
-                    Rectangle { height: 1px; background: Theme.border; }
-
-                    IconPicker {
-                        derived-initial: root.sel-initial;
-                        derived-color: root.sel-color;
-                    }
-
-                    Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
-                    name-edit := LineEdit {
-                        text <=> root.edit-name;
-                        placeholder-text: "My instance";
-                    }
-
-                    Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
-                    jvm-edit := LineEdit {
-                        text <=> root.edit-jvm-args;
-                        placeholder-text: "-Xmx4G -XX:+UseG1GC";
-                    }
-
-                    Text { text: "Java path"; color: Theme.text-muted; font-size: 12px; }
-                    java-edit := LineEdit {
-                        text <=> root.edit-java-path;
-                        placeholder-text: "Leave blank to use the default Java";
-                    }
-
-                    Text { text: "Pre-launch command"; color: Theme.text-muted; font-size: 12px; }
-                    pre-edit := LineEdit {
-                        text <=> root.edit-pre-launch;
-                        placeholder-text: "Optional command run before launch";
-                    }
-
-                    Text { text: "Post-exit command"; color: Theme.text-muted; font-size: 12px; }
-                    post-edit := LineEdit {
-                        text <=> root.edit-post-exit;
-                        placeholder-text: "Optional command run after the game exits";
-                    }
-
-                    Text {
-                        text: "To change the Minecraft version or mod loader, create a new instance.";
-                        color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
-                    }
-
-                    Rectangle { vertical-stretch: 1; }
-
+                // ---- Worlds tab ----
+                if root.detail-tab == 1 : VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: 10px;
                     HorizontalLayout {
-                        spacing: 10px;
-                        padding-top: 4px;
-                        PButton {
-                            text: "Delete";
-                            danger: true;
-                            clicked => { root.confirm-open = true; }
-                        }
+                        spacing: 8px;
                         Rectangle { horizontal-stretch: 1; }
-                        PButton {
-                            text: "Save changes";
-                            primary: true;
-                            enabled: root.edit-name != "";
-                            clicked => {
-                                Logic.edit-instance(
-                                    root.selected-id,
-                                    root.edit-name,
-                                    root.edit-jvm-args,
-                                    root.edit-java-path,
-                                    root.edit-pre-launch,
-                                    root.edit-post-exit,
-                                    Logic.pending-icon-id);
+                        PButton { text: "Open folder"; clicked => { Logic.open-instance-dir(root.selected-id, "saves"); } }
+                    }
+                    if Logic.inst-worlds.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: "◳"; title: "No worlds yet";
+                        subtitle: "Worlds you create or import in-game appear here.";
+                    }
+                    if Logic.inst-worlds.length > 0 : ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 6px;
+                            for w in Logic.inst-worlds : Rectangle {
+                                height: 68px;
+                                border-radius: Theme.radius-sm;
+                                background: Theme.surface-alt;
+                                HorizontalLayout {
+                                    padding: 10px;
+                                    spacing: 12px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            width: 48px;
+                                            height: 48px;
+                                            border-radius: Theme.radius-sm;
+                                            background: Theme.surface;
+                                            clip: true;
+                                            Text { width: 100%; height: 100%; text: "◳"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 22px; }
+                                            Image { width: 100%; height: 100%; source: w.icon; image-fit: cover; }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        spacing: 2px;
+                                        Text { text: w.folder-name; color: Theme.text; font-size: 14px; font-weight: 600; overflow: elide; }
+                                        Text { text: "Last played " + w.last-played + " · " + w.size; color: Theme.text-muted; font-size: 11px; }
+                                    }
+                                    VerticalLayout { alignment: center; PButton { text: "Backup"; clicked => { Logic.backup-world(root.selected-id, w.folder-name); } } }
+                                    VerticalLayout { alignment: center; PButton { text: "Delete"; danger: true; clicked => { root.pending-world = w.folder-name; root.world-confirm-open = true; } } }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---- Resource Packs tab ----
+                if root.detail-tab == 2 : AssetSection {
+                    vertical-stretch: 1;
+                    model: Logic.inst-resourcepacks;
+                    empty-title: "No resource packs";
+                    add => { Logic.add-files(root.selected-id, "resourcepacks"); }
+                    openf => { Logic.open-instance-dir(root.selected-id, "resourcepacks"); }
+                    toggle(f) => { Logic.toggle-resourcepack(root.selected-id, f); }
+                    remove(f) => { Logic.delete-resourcepack(root.selected-id, f); }
+                }
+
+                // ---- Shaders tab ----
+                if root.detail-tab == 3 : AssetSection {
+                    vertical-stretch: 1;
+                    model: Logic.inst-shaderpacks;
+                    empty-title: "No shader packs";
+                    add => { Logic.add-files(root.selected-id, "shaderpacks"); }
+                    openf => { Logic.open-instance-dir(root.selected-id, "shaderpacks"); }
+                    toggle(f) => { Logic.toggle-shaderpack(root.selected-id, f); }
+                    remove(f) => { Logic.delete-shaderpack(root.selected-id, f); }
+                }
+
+                // ---- Mods tab ----
+                if root.detail-tab == 4 : VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: 10px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle { horizontal-stretch: 1; }
+                        PButton { text: "+ Add…"; clicked => { Logic.add-files(root.selected-id, "mods"); } }
+                        PButton { text: "Open folder"; clicked => { Logic.open-instance-dir(root.selected-id, "mods"); } }
+                    }
+                    if Logic.inst-mods.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: "⬡"; title: "No mods installed";
+                        subtitle: "Add mod jars, or open the folder to drop some in.";
+                    }
+                    if Logic.inst-mods.length > 0 : ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 6px;
+                            for m in Logic.inst-mods : Rectangle {
+                                height: 60px;
+                                border-radius: Theme.radius-sm;
+                                background: Theme.surface-alt;
+                                HorizontalLayout {
+                                    padding: 10px;
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        spacing: 2px;
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text { text: m.name; color: m.enabled ? Theme.text : Theme.text-dim; font-size: 14px; font-weight: 600; overflow: elide; }
+                                            Text { text: m.version; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; }
+                                        }
+                                        Text { text: m.description; color: Theme.text-muted; font-size: 11px; overflow: elide; }
+                                    }
+                                    VerticalLayout { alignment: center; PButton { text: m.enabled ? "Disable" : "Enable"; clicked => { Logic.toggle-mod(root.selected-id, m.filename, !m.enabled); } } }
+                                    VerticalLayout { alignment: center; PButton { text: "Remove"; danger: true; clicked => { Logic.remove-mod(root.selected-id, m.filename); } } }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---- Screenshots tab ----
+                if root.detail-tab == 5 : VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: 10px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle { horizontal-stretch: 1; }
+                        PButton { text: "Open folder"; clicked => { Logic.open-instance-dir(root.selected-id, "screenshots"); } }
+                    }
+                    if Logic.inst-screenshots.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: "▱"; title: "No screenshots";
+                        subtitle: "Screenshots you take in-game appear here.";
+                    }
+                    if Logic.inst-screenshots.length > 0 : ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 8px;
+                            for s in Logic.inst-screenshots : Rectangle {
+                                height: 84px;
+                                border-radius: Theme.radius-sm;
+                                background: Theme.surface-alt;
+                                HorizontalLayout {
+                                    padding: 10px;
+                                    spacing: 12px;
+                                    Image { source: s.image; width: 110px; image-fit: contain; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        spacing: 3px;
+                                        Text { text: s.filename; color: Theme.text; font-size: 13px; font-weight: 600; overflow: elide; }
+                                        Text { text: s.created + " · " + s.size; color: Theme.text-muted; font-size: 11px; }
+                                    }
+                                    VerticalLayout { alignment: center; PButton { text: "Delete"; danger: true; clicked => { Logic.delete-screenshot(root.selected-id, s.filename); } } }
+                                }
                             }
                         }
                     }
@@ -421,6 +682,31 @@ export component InstancesView inherits Rectangle {
                     Logic.delete-instance(root.selected-id);
                     root.selected-id = "";
                     root.confirm-open = false;
+                }
+            }
+        }
+    }
+
+    // ---- World delete confirmation (saves are precious) ----
+    if root.world-confirm-open : Dialog {
+        dialog-width: 400px;
+        closed => { root.world-confirm-open = false; }
+        Text { text: "Delete world?"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        Text {
+            text: "“" + root.pending-world + "” will be permanently deleted. Consider backing it up first. This cannot be undone.";
+            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { root.world-confirm-open = false; } }
+            PButton {
+                text: "Delete";
+                danger: true;
+                clicked => {
+                    Logic.delete-world(root.selected-id, root.pending-world);
+                    root.world-confirm-open = false;
                 }
             }
         }

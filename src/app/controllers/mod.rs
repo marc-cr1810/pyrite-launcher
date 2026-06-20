@@ -2,6 +2,7 @@
 use slint::ComponentHandle;
 
 pub mod accounts;
+pub mod details;
 pub mod instances;
 pub mod launch;
 pub mod settings;
@@ -116,6 +117,89 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
         let weak = ui.as_weak();
         logic.on_load_loader_versions(move |loader, game_version| {
             versions::load_loader_versions(&st, &weak, loader.to_string(), game_version.to_string());
+        });
+    }
+
+    // --- Instance content management (detail-pane tabs) ---
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_load_instance_details(move |id| details::load(&st, &weak, id.to_string()));
+    }
+    {
+        let st = state.clone();
+        logic.on_open_instance_dir(move |id, subdir| {
+            details::open_dir(&st, id.to_string(), subdir.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_add_files(move |id, kind| {
+            details::add_files(&st, &weak, id.to_string(), kind.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_delete_world(move |id, folder| {
+            details::delete_world(&st, &weak, id.to_string(), folder.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_backup_world(move |id, folder| {
+            details::backup_world(&st, &weak, id.to_string(), folder.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_toggle_resourcepack(move |id, filename| {
+            details::toggle_resourcepack(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_delete_resourcepack(move |id, filename| {
+            details::delete_resourcepack(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_toggle_shaderpack(move |id, filename| {
+            details::toggle_shaderpack(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_delete_shaderpack(move |id, filename| {
+            details::delete_shaderpack(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_toggle_mod(move |id, filename, enable| {
+            details::toggle_mod(&st, &weak, id.to_string(), filename.to_string(), enable);
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_remove_mod(move |id, filename| {
+            details::remove_mod(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_delete_screenshot(move |id, filename| {
+            details::delete_screenshot(&st, &weak, id.to_string(), filename.to_string());
         });
     }
 
