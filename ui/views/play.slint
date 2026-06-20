@@ -159,9 +159,12 @@ export component PlayView inherits VerticalLayout {
             VerticalLayout {
                 alignment: center;
                 Avatar {
-                    initial: Logic.active-instance-name == "" ? "?" : Logic.active-instance-initial;
+                    initial: Logic.active-instance-name == "" ? "?"
+                        : Logic.active-instance-glyph != "" ? Logic.active-instance-glyph
+                        : Logic.active-instance-initial;
                     tint: Logic.active-instance-name == "" ? Theme.text-dim : Logic.active-instance-color;
                     size: 72px;
+                    photo: Logic.active-instance-image;
                 }
             }
 

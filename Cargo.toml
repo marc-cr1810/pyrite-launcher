@@ -26,6 +26,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # wayland-data-control enables clipboard support on Wayland compositors
 # (wlroots/KDE); arboard otherwise only talks to X11.
 arboard = { version = "3", features = ["wayland-data-control"] }
+# Native file-open dialog for picking a custom instance icon.
+rfd = "0.14"
 
 [build-dependencies]
 slint-build = "1.16"

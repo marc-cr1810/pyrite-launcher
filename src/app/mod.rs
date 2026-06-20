@@ -5,6 +5,7 @@ use slint::ComponentHandle;
 pub mod avatars;
 pub mod controllers;
 pub mod convert;
+pub mod icons;
 pub mod state;
 pub mod theme;
 pub mod ui;
@@ -16,7 +17,21 @@ use std::time::Duration;
 use crate::app::state::AppState;
 use crate::app::theme::ThemeStore;
 use crate::core::config::Config;
-use crate::{Logic, MainWindow};
+use crate::{IconOption, Logic, MainWindow};
+
+/// Push the built-in instance-icon set into the UI for the picker grid.
+fn populate_icon_options(window: &MainWindow) {
+    let opts: Vec<IconOption> = icons::BUILTIN
+        .iter()
+        .map(|(id, glyph)| IconOption {
+            id: (*id).into(),
+            glyph: (*glyph).into(),
+        })
+        .collect();
+    window
+        .global::<Logic>()
+        .set_icon_options(slint::ModelRc::new(slint::VecModel::from(opts)));
+}
 
 /// Build the window, wire everything up, and run the event loop.
 pub fn run() -> Result<(), slint::PlatformError> {
@@ -42,10 +57,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
         log_buf: Arc::new(Mutex::new(Vec::new())),
         log_dirty: Arc::new(AtomicBool::new(false)),
         avatar_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        version_cache: Arc::new(Mutex::new(Vec::new())),
+        pending_icon_path: Arc::new(Mutex::new(None)),
     };
 
     let window = MainWindow::new()?;
     state.themes.apply(&window, &active_theme);
+    populate_icon_options(&window);
     ui::refresh_all(&window, &state);
     controllers::wire(&window, &state);
 

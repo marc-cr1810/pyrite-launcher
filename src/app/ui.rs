@@ -36,6 +36,8 @@ pub fn refresh_summary(ui: &MainWindow, config: &Config, state: &AppState) {
     let mut inst_name = String::new();
     let mut inst_version = String::new();
     let mut inst_loader = String::new();
+    let mut inst_glyph = slint::SharedString::new();
+    let mut inst_image = slint::Image::default();
     if let Some(id) = config.active_instance.as_deref() {
         let path = config.game_dir.join("instances").join(id);
         if let Ok(inst) = Instance::load(id, path) {
@@ -49,6 +51,8 @@ pub fn refresh_summary(ui: &MainWindow, config: &Config, state: &AppState) {
                 Some(other) => other.to_string(),
                 None => String::new(),
             };
+            inst_glyph = convert::instance_icon_glyph(&inst.config.icon);
+            inst_image = convert::instance_icon_image(&inst.path, &inst.config.icon);
         }
     }
     logic.set_active_instance_name(inst_name.clone().into());
@@ -58,6 +62,8 @@ pub fn refresh_summary(ui: &MainWindow, config: &Config, state: &AppState) {
     );
     logic.set_active_instance_version(inst_version.into());
     logic.set_active_instance_loader(inst_loader.into());
+    logic.set_active_instance_glyph(inst_glyph);
+    logic.set_active_instance_image(inst_image);
 
     logic.set_can_play(!account_name.is_empty() && !inst_name.is_empty());
 }

@@ -57,37 +57,59 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     {
         let st = state.clone();
         let weak = ui.as_weak();
-        logic.on_create_instance(move |name, version, loader, loader_version| {
-            instances::create(
-                &st,
-                &weak,
-                name.to_string(),
-                version.to_string(),
-                loader.to_string(),
-                loader_version.to_string(),
-            );
-        });
+        logic.on_create_instance(
+            move |name, version, loader, loader_version, icon_id, memory, jvm_args| {
+                instances::create(
+                    &st,
+                    &weak,
+                    name.to_string(),
+                    version.to_string(),
+                    loader.to_string(),
+                    loader_version.to_string(),
+                    icon_id.to_string(),
+                    memory.to_string(),
+                    jvm_args.to_string(),
+                );
+            },
+        );
     }
     {
         let st = state.clone();
         let weak = ui.as_weak();
-        logic.on_edit_instance(move |id, name, jvm_args, java_path, pre_launch, post_exit| {
-            instances::edit(
-                &st,
-                &weak,
-                id.to_string(),
-                name.to_string(),
-                jvm_args.to_string(),
-                java_path.to_string(),
-                pre_launch.to_string(),
-                post_exit.to_string(),
-            );
-        });
+        logic.on_edit_instance(
+            move |id, name, jvm_args, java_path, pre_launch, post_exit, icon_id| {
+                instances::edit(
+                    &st,
+                    &weak,
+                    id.to_string(),
+                    name.to_string(),
+                    jvm_args.to_string(),
+                    java_path.to_string(),
+                    pre_launch.to_string(),
+                    post_exit.to_string(),
+                    icon_id.to_string(),
+                );
+            },
+        );
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_pick_custom_icon(move || instances::pick_custom_icon(&st, &weak));
+    }
+    {
+        let st = state.clone();
+        logic.on_reset_pending_icon_file(move || instances::reset_pending_icon(&st));
     }
     {
         let st = state.clone();
         let weak = ui.as_weak();
         logic.on_load_versions(move || versions::load_versions(&st, &weak));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_filter_versions(move |ty| versions::filter_versions(&st, &weak, ty.to_string()));
     }
     {
         let st = state.clone();

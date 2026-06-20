@@ -1,12 +1,34 @@
 //! Build Slint UI models from core data structures.
 
-use slint::{Color, ModelRc, SharedString, VecModel};
+use std::path::Path;
+
+use slint::{Color, Image, ModelRc, SharedString, VecModel};
 
 use crate::app::avatars;
+use crate::app::icons;
 use crate::app::state::AppState;
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::Instance;
 use crate::{AccountItem, InstanceItem, LogLine};
+
+/// Glyph to render in place of the monogram for a built-in instance icon.
+/// Empty string means "no glyph" (use the monogram initial, or a custom image).
+pub fn instance_icon_glyph(icon: &Option<String>) -> SharedString {
+    match icon.as_deref() {
+        Some("custom") | None => SharedString::new(),
+        Some(id) => icons::glyph_for(id).unwrap_or("").into(),
+    }
+}
+
+/// The custom `icon.png` for an instance as a Slint image, or an empty image
+/// when the instance does not use a custom icon (or the file is missing).
+pub fn instance_icon_image(instance_path: &Path, icon: &Option<String>) -> Image {
+    if icon.as_deref() == Some("custom") {
+        Image::load_from_path(&instance_path.join("icon.png")).unwrap_or_default()
+    } else {
+        Image::default()
+    }
+}
 
 /// Uppercased first character of a name, for monogram avatars. "?" if empty.
 pub fn initial(name: &str) -> SharedString {
@@ -83,6 +105,9 @@ pub fn instances_model(config: &Config) -> ModelRc<InstanceItem> {
                 java_path: inst.config.java_path.clone().unwrap_or_default().into(),
                 pre_launch: inst.config.pre_launch.clone().unwrap_or_default().into(),
                 post_exit: inst.config.post_exit.clone().unwrap_or_default().into(),
+                icon_id: inst.config.icon.clone().unwrap_or_default().into(),
+                icon_glyph: instance_icon_glyph(&inst.config.icon),
+                icon_image: instance_icon_image(&inst.path, &inst.config.icon),
             }
         })
         .collect();

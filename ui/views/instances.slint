@@ -1,11 +1,13 @@
 import { Theme, Logic, InstanceItem } from "../globals.slint";
-import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog } from "../components.slint";
+import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
 import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 
 export component InstancesView inherits Rectangle {
     property <bool> dialog-open: false;
     property <bool> confirm-open: false;
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
+    // Empty image, used as the "no custom photo" fallback for avatars.
+    property <image> no-image;
 
     // Which instance the detail/edit pane is showing ("" = nothing selected).
     property <string> selected-id;
@@ -15,6 +17,11 @@ export component InstancesView inherits Rectangle {
     property <string> sel-initial;
     property <color> sel-color;
     property <bool> sel-active;
+    // Snapshot of the selected instance's icon, so the picker can be re-seeded
+    // after the (shared-state) create dialog closes.
+    property <string> sel-icon-id;
+    property <string> sel-icon-glyph;
+    property <image> sel-icon-image;
     // Editable fields, seeded from the selected instance on selection.
     property <string> edit-name;
     property <string> edit-jvm-args;
@@ -22,7 +29,27 @@ export component InstancesView inherits Rectangle {
     property <string> edit-pre-launch;
     property <string> edit-post-exit;
 
-    // Seed the detail pane from a list row.
+    // Point the shared icon picker at the currently selected instance.
+    function seed-pending-from-selection() {
+        Logic.pending-icon-id = root.sel-icon-id;
+        Logic.pending-icon-glyph = root.sel-icon-glyph;
+        Logic.pending-icon-image = root.sel-icon-image;
+        Logic.reset-pending-icon-file();
+    }
+
+    // Restore the picker after the create dialog (which borrows the same shared
+    // state) closes: back to the edit selection, or cleared if none.
+    function restore-icon-picker() {
+        if root.selected-id != "" {
+            root.seed-pending-from-selection();
+        } else {
+            Logic.pending-icon-id = "";
+            Logic.pending-icon-glyph = "";
+            Logic.reset-pending-icon-file();
+        }
+    }
+
+    // Seed the detail pane (and icon picker) from a list row.
     function select-row(inst: InstanceItem) {
         root.selected-id = inst.id;
         root.sel-version = inst.version;
@@ -30,11 +57,15 @@ export component InstancesView inherits Rectangle {
         root.sel-initial = inst.initial;
         root.sel-color = inst.avatar-color;
         root.sel-active = inst.active;
+        root.sel-icon-id = inst.icon-id;
+        root.sel-icon-glyph = inst.icon-glyph;
+        root.sel-icon-image = inst.icon-image;
         root.edit-name = inst.name;
         root.edit-jvm-args = inst.jvm-args;
         root.edit-java-path = inst.java-path;
         root.edit-pre-launch = inst.pre-launch;
         root.edit-post-exit = inst.post-exit;
+        root.seed-pending-from-selection();
     }
 
     HorizontalLayout {
@@ -50,6 +81,9 @@ export component InstancesView inherits Rectangle {
                 text: "+ New Instance";
                 primary: true;
                 clicked => {
+                    Logic.pending-icon-id = "";
+                    Logic.pending-icon-glyph = "";
+                    Logic.reset-pending-icon-file();
                     root.dialog-open = true;
                     Logic.load-versions();
                 }
@@ -80,7 +114,13 @@ export component InstancesView inherits Rectangle {
                                 spacing: 10px;
                                 VerticalLayout {
                                     alignment: center;
-                                    Avatar { initial: inst.initial; tint: inst.avatar-color; size: 38px; selected: inst.active; }
+                                    Avatar {
+                                        initial: inst.icon-glyph != "" ? inst.icon-glyph : inst.initial;
+                                        tint: inst.avatar-color;
+                                        size: 38px;
+                                        selected: inst.active;
+                                        photo: inst.icon-image;
+                                    }
                                 }
                                 VerticalLayout {
                                     alignment: center;
@@ -125,12 +165,18 @@ export component InstancesView inherits Rectangle {
                     padding: 24px;
                     spacing: 14px;
 
-                    // Header: avatar + live name + version/loader.
+                    // Header: avatar (live icon) + name + version/loader.
                     HorizontalLayout {
                         spacing: 14px;
                         VerticalLayout {
                             alignment: center;
-                            Avatar { initial: root.sel-initial; tint: root.sel-color; size: 52px; selected: root.sel-active; }
+                            Avatar {
+                                initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : root.sel-initial;
+                                tint: root.sel-color;
+                                size: 52px;
+                                selected: root.sel-active;
+                                photo: Logic.pending-icon-id == "custom" ? Logic.pending-icon-image : root.no-image;
+                            }
                         }
                         VerticalLayout {
                             alignment: center;
@@ -160,6 +206,11 @@ export component InstancesView inherits Rectangle {
                     }
 
                     Rectangle { height: 1px; background: Theme.border; }
+
+                    IconPicker {
+                        derived-initial: root.sel-initial;
+                        derived-color: root.sel-color;
+                    }
 
                     Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
                     name-edit := LineEdit {
@@ -218,7 +269,8 @@ export component InstancesView inherits Rectangle {
                                     root.edit-jvm-args,
                                     root.edit-java-path,
                                     root.edit-pre-launch,
-                                    root.edit-post-exit);
+                                    root.edit-post-exit,
+                                    Logic.pending-icon-id);
                             }
                         }
                     }
@@ -229,39 +281,92 @@ export component InstancesView inherits Rectangle {
 
     // ---- Create dialog ----
     if root.dialog-open : Dialog {
-        dialog-width: 460px;
-        closed => { root.dialog-open = false; }
+        dialog-width: 520px;
+        closed => { root.dialog-open = false; root.restore-icon-picker(); }
         Text { text: "New Instance"; color: Theme.text; font-size: 18px; font-weight: 700; }
 
         Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
         create-name-edit := LineEdit { placeholder-text: "My instance"; }
 
-        Text { text: "Minecraft version"; color: Theme.text-muted; font-size: 12px; }
-        version-combo := ComboBox {
-            model: Logic.version-list;
-            enabled: !Logic.versions-loading && Logic.version-list.length > 0;
+        IconPicker {
+            derived-initial: create-name-edit.text == "" ? "?" : create-name-edit.text;
+            derived-color: Theme.accent;
         }
-        if Logic.versions-loading : Text { text: "Loading versions…"; color: Theme.text-dim; font-size: 11px; }
 
-        Text { text: "Mod loader"; color: Theme.text-muted; font-size: 12px; }
-        loader-combo := ComboBox {
-            model: root.loaders;
-            current-index: 0;
-            selected(val) => {
-                if val != "Vanilla" && version-combo.current-value != "" {
-                    Logic.load-loader-versions(val, version-combo.current-value);
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 6px;
+                width: 150px;
+                Text { text: "Version type"; color: Theme.text-muted; font-size: 12px; }
+                type-combo := ComboBox {
+                    model: ["Release", "Snapshot", "Beta", "Alpha"];
+                    current-index: 0;
+                    selected(val) => {
+                        Logic.filter-versions(
+                            val == "Release" ? "release"
+                            : val == "Snapshot" ? "snapshot"
+                            : val == "Beta" ? "old_beta"
+                            : "old_alpha");
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "Minecraft version"; color: Theme.text-muted; font-size: 12px; }
+                version-combo := ComboBox {
+                    model: Logic.version-list;
+                    enabled: !Logic.versions-loading && Logic.version-list.length > 0;
                 }
             }
         }
-        if loader-combo.current-value != "Vanilla" && Logic.loader-versions-loading :
-            Text { text: "Loading loader versions…"; color: Theme.text-dim; font-size: 11px; }
-        if loader-combo.current-value != "Vanilla" && !Logic.loader-versions-loading :
-            Text {
-                text: Logic.loader-version-list.length > 0
-                    ? "Recommended loader version will be used."
-                    : "No loader versions for this Minecraft version.";
-                color: Theme.text-dim; font-size: 11px;
+        if Logic.versions-loading : Text { text: "Loading versions…"; color: Theme.text-dim; font-size: 11px; }
+
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "Mod loader"; color: Theme.text-muted; font-size: 12px; }
+                loader-combo := ComboBox {
+                    model: root.loaders;
+                    current-index: 0;
+                    selected(val) => {
+                        if val != "Vanilla" && version-combo.current-value != "" {
+                            Logic.load-loader-versions(val, version-combo.current-value);
+                        }
+                    }
+                }
             }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "Loader version"; color: Theme.text-muted; font-size: 12px; }
+                loaderver-combo := ComboBox {
+                    model: Logic.loader-version-list;
+                    enabled: loader-combo.current-value != "Vanilla"
+                        && !Logic.loader-versions-loading
+                        && Logic.loader-version-list.length > 0;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 6px;
+                width: 150px;
+                Text { text: "Max memory (MB)"; color: Theme.text-muted; font-size: 12px; }
+                mem-edit := LineEdit { input-type: number; placeholder-text: "e.g. 4096"; }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
+                jvm-create-edit := LineEdit { placeholder-text: "-XX:+UseG1GC"; }
+            }
+        }
 
         HorizontalLayout {
             alignment: end;
@@ -269,7 +374,7 @@ export component InstancesView inherits Rectangle {
             padding-top: 8px;
             PButton {
                 text: "Cancel";
-                clicked => { root.dialog-open = false; }
+                clicked => { root.dialog-open = false; root.restore-icon-picker(); }
             }
             PButton {
                 text: "Create";
@@ -280,9 +385,16 @@ export component InstancesView inherits Rectangle {
                         create-name-edit.text,
                         version-combo.current-value,
                         loader-combo.current-value == "Vanilla" ? "" : loader-combo.current-value,
-                        "");
+                        loader-combo.current-value == "Vanilla" ? ""
+                            : (loaderver-combo.current-value == "Recommended" ? "" : loaderver-combo.current-value),
+                        Logic.pending-icon-id,
+                        mem-edit.text,
+                        jvm-create-edit.text);
                     root.dialog-open = false;
+                    root.restore-icon-picker();
                     create-name-edit.text = "";
+                    mem-edit.text = "";
+                    jvm-create-edit.text = "";
                 }
             }
         }

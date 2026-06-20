@@ -71,6 +71,10 @@ pub struct InstanceConfig {
     pub mods: Option<HashMap<String, ModValue>>,
     pub java_path: Option<String>,
     pub java_version: Option<u32>,
+    /// Instance icon: a built-in glyph id (e.g. "pickaxe") or "custom" when the
+    /// user supplied `icon.png` in the instance folder. `None` = monogram.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +153,7 @@ impl Instance {
                 mods: None,
                 java_path: None,
                 java_version: None,
+                icon: None,
             },
         };
 
@@ -870,6 +875,7 @@ impl Instance {
                 mods: Some(instance_mods),
                 java_path: None,
                 java_version: None,
+                icon: None,
             },
         };
 

@@ -22,11 +22,22 @@ export struct InstanceItem {
     active: bool,
     initial: string,       // first letter, for the monogram avatar
     avatar-color: color,   // stable color derived from the instance
+    // Icon: raw id ("" / builtin id / "custom"), the glyph to show for built-in
+    // icons (empty otherwise), and the custom image (empty unless "custom").
+    icon-id: string,
+    icon-glyph: string,
+    icon-image: image,
     // Per-instance launch overrides (empty string = unset), for the edit dialog
     jvm-args: string,
     java-path: string,
     pre-launch: string,
     post-exit: string,
+}
+
+// One selectable built-in icon in the picker grid.
+export struct IconOption {
+    id: string,
+    glyph: string,
 }
 
 export struct VersionItem {
@@ -90,17 +101,29 @@ export global Logic {
     in property <[InstanceItem]> instances;
     callback select-instance(string /* id */);
     callback delete-instance(string /* id */);
-    // name, game-version, loader ("" = vanilla), loader-version ("" = auto)
-    callback create-instance(string, string, string, string);
-    // id, name, jvm-args, java-path, pre-launch, post-exit (empty string = unset)
-    callback edit-instance(string, string, string, string, string, string);
+    // name, game-version, loader ("" = vanilla), loader-version ("" = auto),
+    // icon-id ("" / builtin id / "custom"), memory-mb ("" = default), jvm-args
+    callback create-instance(string, string, string, string, string, string, string);
+    // id, name, jvm-args, java-path, pre-launch, post-exit, icon-id
+    callback edit-instance(string, string, string, string, string, string, string);
     // Version picker data for the create dialog (plain strings for ComboBox)
     in property <[string]> version-list;
     in property <bool> versions-loading;
     callback load-versions();
+    // Re-derive version-list from the cached manifest for a type filter:
+    // "release" / "snapshot" / "old_beta" / "old_alpha".
+    callback filter-versions(string /* type */);
     in property <[string]> loader-version-list;
     in property <bool> loader-versions-loading;
     callback load-loader-versions(string /* loader */, string /* game-version */);
+
+    // --- Instance icon picker (shared by create + edit; one is open at a time) ---
+    in property <[IconOption]> icon-options;       // built-in grid, set at startup
+    in-out property <string> pending-icon-id;      // "" / builtin id / "custom"
+    in-out property <string> pending-icon-glyph;   // glyph for the selected built-in
+    in-out property <image> pending-icon-image;    // preview for a custom png
+    callback pick-custom-icon();                   // opens native file dialog
+    callback reset-pending-icon-file();            // clears a stale picked-file path
 
     // --- Active selection summary (Play view) ---
     in property <string> active-account-name;
@@ -112,6 +135,8 @@ export global Logic {
     in property <color> active-instance-color;
     in property <string> active-instance-version;
     in property <string> active-instance-loader;
+    in property <string> active-instance-glyph;   // built-in icon glyph, or ""
+    in property <image> active-instance-image;     // custom icon, or empty
     in property <bool> can-play;
 
     // --- Launch / progress / logs ---

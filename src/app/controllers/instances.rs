@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use slint::ComponentHandle;
 use slint::Weak;
 
 use crate::app::state::AppState;
@@ -40,6 +41,7 @@ pub fn delete(state: &AppState, weak: &Weak<MainWindow>, id: String) {
 /// Edit a vanilla, non-version field on an existing instance: display name and
 /// the per-instance launch overrides. Version/loader changes are intentionally
 /// out of scope here (they require re-resolving the loader profile).
+#[allow(clippy::too_many_arguments)]
 pub fn edit(
     state: &AppState,
     weak: &Weak<MainWindow>,
@@ -49,6 +51,7 @@ pub fn edit(
     java_path: String,
     pre_launch: String,
     post_exit: String,
+    icon_id: String,
 ) {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -71,6 +74,10 @@ pub fn edit(
     inst.config.java_path = none_if_blank(java_path);
     inst.config.pre_launch = none_if_blank(pre_launch);
     inst.config.post_exit = none_if_blank(post_exit);
+    if let Err(e) = apply_icon(state, &mut inst, &icon_id) {
+        status(weak, format!("Failed to set icon: {e}"));
+        return;
+    }
 
     if let Err(e) = inst.save() {
         status(weak, format!("Failed to save instance: {e}"));
@@ -78,6 +85,80 @@ pub fn edit(
     }
     status(weak, "Instance updated.");
     refresh(state, weak);
+}
+
+/// Open a native file dialog to pick a custom icon PNG. On selection, remember
+/// the path (copied into the instance on save) and preview it in the dialog.
+pub fn pick_custom_icon(state: &AppState, weak: &Weak<MainWindow>) {
+    let state = state.clone();
+    let weak = weak.clone();
+    // Run the blocking native dialog off the UI thread.
+    state.rt.spawn(async move {
+        let picked = rfd::FileDialog::new()
+            .add_filter("PNG image", &["png"])
+            .set_title("Choose instance icon")
+            .pick_file();
+        if let Some(path) = picked {
+            *state.pending_icon_path.lock().unwrap() = Some(path.clone());
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                let logic = ui.global::<crate::Logic>();
+                logic.set_pending_icon_id("custom".into());
+                logic.set_pending_icon_image(
+                    slint::Image::load_from_path(&path).unwrap_or_default(),
+                );
+            });
+        }
+    });
+}
+
+/// Clear any pending custom-icon file path (e.g. when re-opening a dialog), so
+/// a save without a fresh pick doesn't reuse a stale selection.
+pub fn reset_pending_icon(state: &AppState) {
+    *state.pending_icon_path.lock().unwrap() = None;
+}
+
+/// Apply the chosen icon to an instance's config (and filesystem). `icon_id` is
+/// "" (monogram), a built-in id, or "custom" (use the pending picked PNG, or
+/// keep the existing icon.png if none was picked).
+fn apply_icon(state: &AppState, inst: &mut Instance, icon_id: &str) -> Result<(), String> {
+    let icon_png = inst.path.join("icon.png");
+    let pending = state.pending_icon_path.lock().unwrap().take();
+    match icon_id {
+        "" => {
+            let _ = std::fs::remove_file(&icon_png);
+            inst.config.icon = None;
+        }
+        "custom" => {
+            if let Some(src) = pending {
+                std::fs::copy(&src, &icon_png)
+                    .map_err(|e| format!("Failed to copy icon: {e}"))?;
+            }
+            // If no new file was picked, the existing icon.png is kept as-is.
+            inst.config.icon = Some("custom".to_string());
+        }
+        builtin => {
+            let _ = std::fs::remove_file(&icon_png);
+            inst.config.icon = Some(builtin.to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Build the JVM args vector from a max-memory field (MB) plus extra args.
+/// Returns `None` when both are empty (so the field is omitted from the toml).
+fn build_jvm_args(memory_mb: &str, extra: &str) -> Option<Vec<String>> {
+    let mut args = Vec::new();
+    if let Ok(mb) = memory_mb.trim().parse::<u64>()
+        && mb > 0
+    {
+        args.push(format!("-Xmx{mb}M"));
+    }
+    args.extend(extra.split_whitespace().map(|a| a.to_string()));
+    if args.is_empty() {
+        None
+    } else {
+        Some(args)
+    }
 }
 
 /// Split a whitespace-separated argument string into a vector, or `None` if it
@@ -101,6 +182,7 @@ fn none_if_blank(s: String) -> Option<String> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create(
     state: &AppState,
     weak: &Weak<MainWindow>,
@@ -108,6 +190,9 @@ pub fn create(
     game_version: String,
     loader: String,
     loader_version: String,
+    icon_id: String,
+    memory_mb: String,
+    jvm_args: String,
 ) {
     let name = name.trim().to_string();
     if name.is_empty() || game_version.is_empty() {
@@ -139,16 +224,27 @@ pub fn create(
         };
 
         let id = unique_id(&game_dir, &name);
-        match Instance::create(&game_dir, &id, &name, &version_id) {
-            Ok(inst) => {
-                let mut cfg = state.config.lock().unwrap();
-                cfg.active_instance = Some(inst.id);
-                let _ = cfg.save();
-            }
+        let mut inst = match Instance::create(&game_dir, &id, &name, &version_id) {
+            Ok(inst) => inst,
             Err(e) => {
                 status(&weak, format!("Failed to create instance: {e}"));
                 return;
             }
+        };
+
+        inst.config.jvm_args = build_jvm_args(&memory_mb, &jvm_args);
+        if let Err(e) = apply_icon(&state, &mut inst, &icon_id) {
+            status(&weak, format!("Instance created, but icon failed: {e}"));
+        }
+        if let Err(e) = inst.save() {
+            status(&weak, format!("Failed to save instance: {e}"));
+            return;
+        }
+
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.active_instance = Some(inst.id.clone());
+            let _ = cfg.save();
         }
         status(&weak, "Instance created.");
         refresh(&state, &weak);

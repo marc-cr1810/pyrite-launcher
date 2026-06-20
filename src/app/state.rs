@@ -30,6 +30,14 @@ pub struct AppState {
     /// background fetches from Crafatar; the UI thread builds `slint::Image`s
     /// from the cached pixels. See `app::avatars`.
     pub avatar_cache: Arc<Mutex<HashMap<String, AvatarEntry>>>,
+    /// Cached Mojang manifest as (version id, type) pairs, fetched once when the
+    /// New Instance dialog opens so the type filter can re-derive the list
+    /// without hitting the network again. Type is "release"/"snapshot"/
+    /// "old_beta"/"old_alpha".
+    pub version_cache: Arc<Mutex<Vec<(String, String)>>>,
+    /// Path of a custom icon the user just picked in the New Instance / edit
+    /// dialog, pending copy into the instance folder on save. Cleared after use.
+    pub pending_icon_path: Arc<Mutex<Option<std::path::PathBuf>>>,
 }
 
 impl AppState {

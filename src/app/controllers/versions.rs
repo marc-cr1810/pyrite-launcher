@@ -8,22 +8,54 @@ use crate::app::state::AppState;
 use crate::core::api::ApiClient;
 use crate::{Logic, MainWindow};
 
-/// Fetch the Mojang manifest and fill the Minecraft version list.
+/// Default version-type filter when the dialog first opens.
+const DEFAULT_FILTER: &str = "release";
+
+/// Fetch the Mojang manifest, cache (id, type) pairs, and fill the version list
+/// with the default (release) filter applied.
 pub fn load_versions(state: &AppState, weak: &Weak<MainWindow>) {
+    let state = state.clone();
     let weak = weak.clone();
     set_versions_loading(&weak, true);
-    state.rt.spawn(async move {
+    state.rt.clone().spawn(async move {
         let api = ApiClient::new();
-        let versions: Vec<String> = match api.fetch_version_manifest().await {
-            Ok(manifest) => manifest.versions.into_iter().map(|v| v.id).collect(),
+        let pairs: Vec<(String, String)> = match api.fetch_version_manifest().await {
+            Ok(manifest) => manifest
+                .versions
+                .into_iter()
+                .map(|v| (v.id, v.r#type))
+                .collect(),
             Err(_) => Vec::new(),
         };
+        *state.version_cache.lock().unwrap() = pairs.clone();
+        let filtered = filtered_ids(&pairs, DEFAULT_FILTER);
         let _ = weak.upgrade_in_event_loop(move |ui| {
             let logic = ui.global::<Logic>();
-            logic.set_version_list(convert::string_model(versions));
+            logic.set_version_list(convert::string_model(filtered));
             logic.set_versions_loading(false);
         });
     });
+}
+
+/// Re-derive the version list from the cached manifest for a type filter,
+/// without hitting the network again.
+pub fn filter_versions(state: &AppState, weak: &Weak<MainWindow>, type_filter: String) {
+    let cache = state.version_cache.lock().unwrap();
+    let filtered = filtered_ids(&cache, &type_filter);
+    drop(cache);
+    let _ = weak.upgrade_in_event_loop(move |ui| {
+        ui.global::<Logic>()
+            .set_version_list(convert::string_model(filtered));
+    });
+}
+
+/// Keep only version ids whose manifest type matches the requested filter.
+fn filtered_ids(pairs: &[(String, String)], type_filter: &str) -> Vec<String> {
+    pairs
+        .iter()
+        .filter(|(_, ty)| ty == type_filter)
+        .map(|(id, _)| id.clone())
+        .collect()
 }
 
 /// Fetch available loader versions for the chosen loader + Minecraft version.
@@ -65,9 +97,12 @@ pub fn load_loader_versions(
             }
             _ => Vec::new(),
         };
+        // "Recommended" (auto-select) is always the first, default choice.
+        let mut options = vec!["Recommended".to_string()];
+        options.extend(list);
         let _ = weak.upgrade_in_event_loop(move |ui| {
             let logic = ui.global::<Logic>();
-            logic.set_loader_version_list(convert::string_model(list));
+            logic.set_loader_version_list(convert::string_model(options));
             logic.set_loader_versions_loading(false);
         });
     });

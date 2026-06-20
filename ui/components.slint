@@ -1,5 +1,5 @@
 // Reusable themed building blocks. All colors come from `Theme`.
-import { Theme } from "globals.slint";
+import { Theme, Logic } from "globals.slint";
 import { ScrollView } from "std-widgets.slint";
 
 // Push button with visual variants:
@@ -205,6 +205,87 @@ export component EmptyState inherits VerticalLayout {
     }
 }
 
+// Instance icon picker: a live preview, a grid of built-in glyph icons, plus
+// "Monogram" (none) and "Choose file…" (custom PNG). Operates on the shared
+// `Logic.pending-icon-*` state, so only one picker should be visible at a time.
+export component IconPicker inherits VerticalLayout {
+    // Monogram fallback shown when no icon is chosen.
+    in property <string> derived-initial;
+    in property <color> derived-color;
+    // Empty image used as the preview's "no photo" fallback.
+    property <image> no-image;
+    spacing: 8px;
+
+    Text { text: "Icon"; color: Theme.text-muted; font-size: 12px; }
+
+    HorizontalLayout {
+        spacing: 14px;
+
+        // Live preview.
+        VerticalLayout {
+            alignment: start;
+            Avatar {
+                initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : root.derived-initial;
+                tint: root.derived-color;
+                size: 56px;
+                photo: Logic.pending-icon-id == "custom" ? Logic.pending-icon-image : root.no-image;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 8px;
+
+            // Built-in glyph grid (6 per row).
+            GridLayout {
+                spacing: 6px;
+                for opt[i] in Logic.icon-options : Rectangle {
+                    row: floor(i / 6);
+                    col: mod(i, 6);
+                    width: 34px;
+                    height: 34px;
+                    border-radius: Theme.radius-sm;
+                    background: Logic.pending-icon-id == opt.id
+                        ? Theme.surface-alt
+                        : (swatch.has-hover ? Theme.surface-hover : transparent);
+                    border-width: 1px;
+                    border-color: Logic.pending-icon-id == opt.id ? Theme.accent : Theme.border;
+                    animate background, border-color { duration: 100ms; }
+                    Text {
+                        text: opt.glyph;
+                        color: Theme.text;
+                        font-size: 17px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    swatch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            Logic.pending-icon-id = opt.id;
+                            Logic.pending-icon-glyph = opt.glyph;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                PButton {
+                    text: "Monogram";
+                    clicked => {
+                        Logic.pending-icon-id = "";
+                        Logic.pending-icon-glyph = "";
+                    }
+                }
+                PButton {
+                    text: "Choose file…";
+                    clicked => { Logic.pick-custom-icon(); }
+                }
+            }
+        }
+    }
+}
+
 // Modal dialog: dims the background, swallows clicks behind it, closes on
 // backdrop click or Escape, and floats a shadowed card sized to its content.
 export component Dialog inherits Rectangle {
@@ -231,15 +312,23 @@ export component Dialog inherits Rectangle {
     }
     init => { key-handler.focus(); }
 
-    Card {
-        elevation: 24px;
-        width: root.dialog-width;
-        // Click inside the card must not fall through to the backdrop.
-        TouchArea {}
-        VerticalLayout {
-            padding: 24px;
-            spacing: 12px;
-            @children
+    // Center the card and let it size to its content (otherwise it fills the
+    // whole window and the field layout spreads out to fill the height).
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Card {
+                elevation: 24px;
+                width: root.dialog-width;
+                // Click inside the card must not fall through to the backdrop.
+                TouchArea {}
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    @children
+                }
+            }
         }
     }
 }
