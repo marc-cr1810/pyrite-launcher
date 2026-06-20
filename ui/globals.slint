@@ -32,6 +32,9 @@ export struct InstanceItem {
     java-path: string,
     pre-launch: string,
     post-exit: string,
+    // Playtime stats
+    last-played: string,   // human-readable relative time ("2 hours ago", "Never")
+    playtime: string,      // human-readable duration ("2h 15m", "< 1m", "—")
 }
 
 // One selectable built-in icon in the picker grid.
@@ -158,11 +161,18 @@ export global Logic {
     in property <[InstanceItem]> instances;
     callback select-instance(string /* id */);
     callback delete-instance(string /* id */);
+    callback duplicate-instance(string /* id */);
     // name, game-version, loader ("" = vanilla), loader-version ("" = auto),
     // icon-id ("" / builtin id / "custom"), memory-mb ("" = default), jvm-args
     callback create-instance(string, string, string, string, string, string, string);
     // id, name, jvm-args, java-path, pre-launch, post-exit, icon-id
     callback edit-instance(string, string, string, string, string, string, string);
+    // Instance sorting ("name" / "last-played" / "playtime")
+    in-out property <string> instance-sort: "name";
+    callback sort-instances(string /* sort-key */);
+    // Instance search/filter
+    in-out property <string> instance-search;
+    callback search-instances(string /* query */);
     // Version picker data for the create dialog (plain strings for ComboBox)
     in property <[string]> version-list;
     in property <bool> versions-loading;
@@ -248,4 +258,10 @@ export global Logic {
     callback save-settings(string /* game-dir */, string /* java-path */, string /* jvm-args */);
     callback select-theme(string);
     callback install-java(int /* major version */);
+
+    // --- Crash diagnostics ---
+    in-out property <bool> show-crash-dialog: false;
+    in-out property <string> crash-title;
+    in-out property <string> crash-description;
+    in-out property <[string]> crash-solutions;
 }

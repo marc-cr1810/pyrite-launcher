@@ -75,6 +75,12 @@ pub struct InstanceConfig {
     /// user supplied `icon.png` in the instance folder. `None` = monogram.
     #[serde(default)]
     pub icon: Option<String>,
+    /// ISO 8601 timestamp of the last time this instance was launched.
+    #[serde(default)]
+    pub last_played: Option<String>,
+    /// Total playtime in seconds across all launches.
+    #[serde(default)]
+    pub total_playtime_secs: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +160,8 @@ impl Instance {
                 java_path: None,
                 java_version: None,
                 icon: None,
+                last_played: None,
+                total_playtime_secs: 0,
             },
         };
 
@@ -167,6 +175,22 @@ impl Instance {
                 .map_err(|e| format!("Failed to delete instance files: {}", e))?;
         }
         Ok(())
+    }
+
+    /// Create a copy of this instance under a new id and display name.
+    pub fn duplicate(&self, game_dir: &Path, new_id: &str, new_name: &str) -> Result<Self, String> {
+        let new_path = game_dir.join("instances").join(new_id);
+        if new_path.exists() {
+            return Err(format!("Instance directory '{}' already exists.", new_id));
+        }
+        copy_dir_recursive(&self.path, &new_path)?;
+        let mut new_inst = Self::load(new_id, new_path)?;
+        new_inst.config.name = new_name.to_string();
+        // Reset playtime stats for the copy.
+        new_inst.config.last_played = None;
+        new_inst.config.total_playtime_secs = 0;
+        new_inst.save()?;
+        Ok(new_inst)
     }
 
     pub fn backup(&self) -> Result<PathBuf, String> {
@@ -876,6 +900,8 @@ impl Instance {
                 java_path: None,
                 java_version: None,
                 icon: None,
+                last_played: None,
+                total_playtime_secs: 0,
             },
         };
 
@@ -1100,6 +1126,23 @@ fn unzip_to_dir(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
                 }
             let mut outfile = File::create(&outpath).map_err(|e| e.to_string())?;
             io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Recursively copy a directory tree from `src` to `dst`.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| format!("Failed to create directory: {}", e))?;
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("Failed to copy file: {}", e))?;
         }
     }
     Ok(())

@@ -96,6 +96,21 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     {
         let st = state.clone();
         let weak = ui.as_weak();
+        logic.on_duplicate_instance(move |id| instances::duplicate(&st, &weak, id.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_sort_instances(move |key| instances::sort(&st, &weak, key.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_search_instances(move |query| instances::search(&st, &weak, query.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
         logic.on_pick_custom_icon(move || instances::pick_custom_icon(&st, &weak));
     }
     {

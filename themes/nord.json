@@ -1,0 +1,18 @@
+{
+  "name": "Nord",
+  "window_bg": "#2e3440",
+  "sidebar_bg": "#272c36",
+  "surface": "#3b4252",
+  "surface_alt": "#434c5e",
+  "surface_hover": "#4c566a",
+  "text": "#eceff4",
+  "text_muted": "#d8dee9",
+  "text_dim": "#7b88a1",
+  "accent": "#88c0d0",
+  "accent_hover": "#8fbcbb",
+  "accent_text": "#2e3440",
+  "border": "#4c566a",
+  "success": "#a3be8c",
+  "warning": "#ebcb8b",
+  "error": "#bf616a"
+}

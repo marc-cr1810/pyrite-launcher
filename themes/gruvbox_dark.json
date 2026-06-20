@@ -1,0 +1,18 @@
+{
+  "name": "Gruvbox Dark",
+  "window_bg": "#282828",
+  "sidebar_bg": "#1d2021",
+  "surface": "#3c3836",
+  "surface_alt": "#504945",
+  "surface_hover": "#665c54",
+  "text": "#ebdbb2",
+  "text_muted": "#d5c4a1",
+  "text_dim": "#928374",
+  "accent": "#83a598",
+  "accent_hover": "#8ec07c",
+  "accent_text": "#282828",
+  "border": "#504945",
+  "success": "#b8bb26",
+  "warning": "#fabd2f",
+  "error": "#fb4934"
+}

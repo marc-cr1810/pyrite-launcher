@@ -11,6 +11,11 @@ use crate::Theme as UiTheme;
 use crate::MainWindow;
 
 const DEFAULT_JSON: &str = include_str!("../../themes/default.json");
+const CATPPUCCIN_MOCHA_JSON: &str = include_str!("../../themes/catppuccin_mocha.json");
+const DRACULA_JSON: &str = include_str!("../../themes/dracula.json");
+const NORD_JSON: &str = include_str!("../../themes/nord.json");
+const GRUVBOX_DARK_JSON: &str = include_str!("../../themes/gruvbox_dark.json");
+const LIGHT_JSON: &str = include_str!("../../themes/light.json");
 
 /// A palette. All colors optional so a partial user theme inherits the rest
 /// from the default.
@@ -45,12 +50,27 @@ impl ThemeStore {
             .and_then(|p| p.parent().map(|d| d.join("themes")))
     }
 
-    pub fn load() -> Self {
-        let default: ThemePalette =
-            serde_json::from_str(DEFAULT_JSON).expect("embedded default theme is valid");
-        let default_name = default.name.clone().unwrap_or_else(|| "Default Dark".into());
-        let mut themes = vec![(default_name.clone(), default)];
+    /// Parse a bundled JSON string into a named palette entry.
+    fn parse_builtin(json: &str, fallback_name: &str) -> (String, ThemePalette) {
+        let palette: ThemePalette = serde_json::from_str(json)
+            .unwrap_or_else(|_| panic!("embedded theme '{fallback_name}' is valid JSON"));
+        let name = palette.name.clone().unwrap_or_else(|| fallback_name.to_string());
+        (name, palette)
+    }
 
+    pub fn load() -> Self {
+        // Embedded themes — always available.
+        let mut themes = vec![
+            Self::parse_builtin(DEFAULT_JSON, "Default Dark"),
+            Self::parse_builtin(CATPPUCCIN_MOCHA_JSON, "Catppuccin Mocha"),
+            Self::parse_builtin(DRACULA_JSON, "Dracula"),
+            Self::parse_builtin(NORD_JSON, "Nord"),
+            Self::parse_builtin(GRUVBOX_DARK_JSON, "Gruvbox Dark"),
+            Self::parse_builtin(LIGHT_JSON, "Light"),
+        ];
+        let builtin_names: Vec<String> = themes.iter().map(|(n, _)| n.clone()).collect();
+
+        // User themes from the config dir (additive, won't override builtins).
         if let Some(dir) = Self::themes_dir()
             && let Ok(entries) = std::fs::read_dir(&dir)
         {
@@ -65,7 +85,7 @@ impl ThemeStore {
                     let name = palette.name.clone().unwrap_or_else(|| {
                         path.file_stem().unwrap_or_default().to_string_lossy().to_string()
                     });
-                    if name != default_name {
+                    if !builtin_names.contains(&name) {
                         themes.push((name, palette));
                     }
                 }

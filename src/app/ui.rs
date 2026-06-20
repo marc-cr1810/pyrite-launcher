@@ -17,7 +17,9 @@ pub fn refresh_accounts(ui: &MainWindow, config: &Config, state: &AppState) {
 }
 
 pub fn refresh_instances(ui: &MainWindow, config: &Config) {
-    ui.global::<Logic>().set_instances(convert::instances_model(config));
+    let sort_key = ui.global::<Logic>().get_instance_sort();
+    let search_query = ui.global::<Logic>().get_instance_search();
+    ui.global::<Logic>().set_instances(convert::instances_model(config, sort_key.as_str(), search_query.as_str()));
 }
 
 pub fn refresh_summary(ui: &MainWindow, config: &Config, state: &AppState) {

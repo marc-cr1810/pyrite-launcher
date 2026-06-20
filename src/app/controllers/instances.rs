@@ -358,6 +358,44 @@ fn unique_id(game_dir: &Path, name: &str) -> String {
     candidate
 }
 
+pub fn duplicate(state: &AppState, weak: &Weak<MainWindow>, id: String) {
+    let game_dir = state.game_dir();
+    let path = game_dir.join("instances").join(&id);
+    let inst = match Instance::load(&id, path) {
+        Ok(inst) => inst,
+        Err(e) => {
+            status(weak, format!("Failed to load instance: {e}"));
+            return;
+        }
+    };
+
+    let new_name = format!("{} (copy)", inst.config.name);
+    let new_id = unique_id(&game_dir, &new_name);
+    match inst.duplicate(&game_dir, &new_id, &new_name) {
+        Ok(_) => {
+            status(weak, format!("Duplicated as \"{}\".", new_name));
+            refresh(state, weak);
+        }
+        Err(e) => status(weak, format!("Failed to duplicate: {e}")),
+    }
+}
+
+pub fn sort(state: &AppState, weak: &Weak<MainWindow>, key: String) {
+    let state = state.clone();
+    let _ = weak.upgrade_in_event_loop(move |ui| {
+        ui.global::<crate::Logic>().set_instance_sort(key.as_str().into());
+        ui::refresh_instances(&ui, &state.config.lock().unwrap());
+    });
+}
+
+pub fn search(state: &AppState, weak: &Weak<MainWindow>, query: String) {
+    let state = state.clone();
+    let _ = weak.upgrade_in_event_loop(move |ui| {
+        ui.global::<crate::Logic>().set_instance_search(query.as_str().into());
+        ui::refresh_instances(&ui, &state.config.lock().unwrap());
+    });
+}
+
 fn refresh(state: &AppState, weak: &Weak<MainWindow>) {
     let state = state.clone();
     let _ = weak.upgrade_in_event_loop(move |ui| ui::refresh_all(&ui, &state));

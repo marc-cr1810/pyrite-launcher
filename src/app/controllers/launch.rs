@@ -134,6 +134,7 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
             }
         });
 
+        let play_start = std::time::Instant::now();
         let launcher = Launcher::new(config.clone());
         let result = launcher
             .launch_with_logs(&instance, &account, Some(log_tx))
@@ -141,11 +142,53 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
 
         let _ = consumer.join();
 
+        // Record playtime and last-played timestamp.
+        let elapsed_secs = play_start.elapsed().as_secs();
+        if elapsed_secs > 0 {
+            let game_dir = state.game_dir();
+            let inst_path = game_dir.join("instances").join(&instance.id);
+            if let Ok(mut inst) = crate::core::instance::Instance::load(&instance.id, inst_path) {
+                inst.config.last_played = Some(chrono::Utc::now().to_rfc3339());
+                inst.config.total_playtime_secs += elapsed_secs;
+                let _ = inst.save();
+            }
+        }
+
         match result {
             Ok(()) => status(&weak, "Minecraft exited."),
-            Err(e) => status(&weak, format!("Launch error: {e}")),
+            Err(e) => {
+                status(&weak, format!("Launch error: {e}"));
+
+                let game_dir = state.game_dir();
+                let inst_path = game_dir.join("instances").join(&instance.id);
+                let log_path = inst_path.join("logs").join("latest.log");
+                let log_content = std::fs::read_to_string(&log_path).unwrap_or_default();
+
+                // If there's no log content, check the memory log buffer
+                let log_content = if log_content.is_empty() {
+                    state.log_buf.lock().unwrap().join("\n")
+                } else {
+                    log_content
+                };
+
+                if let Some(analysis) = crate::core::crash_analyzer::analyze_crash(&inst_path, &log_content) {
+                    let _ = weak.upgrade_in_event_loop(move |ui| {
+                        let logic = ui.global::<Logic>();
+                        logic.set_crash_title(analysis.title.into());
+                        logic.set_crash_description(analysis.description.into());
+
+                        let solutions: Vec<slint::SharedString> = analysis.possible_solutions.into_iter().map(|s| s.into()).collect();
+                        let model = slint::ModelRc::new(slint::VecModel::from(solutions));
+                        logic.set_crash_solutions(model);
+                        logic.set_show_crash_dialog(true);
+                    });
+                }
+            }
         }
         finish(&state, &weak);
+        // Refresh the instance list so the new playtime stats show up.
+        let st = state.clone();
+        let _ = weak.upgrade_in_event_loop(move |ui| ui::refresh_instances(&ui, &st.config.lock().unwrap()));
     });
 }
 

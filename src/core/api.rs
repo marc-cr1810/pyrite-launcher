@@ -675,7 +675,7 @@ impl ApiClient {
         let url = "https://api.modrinth.com/v2/search";
         self.client.get(url)
             .query(&[("query", query), ("facets", "[[\"project_type:modpack\"]]")])
-            .header("User-Agent", "minecli/0.1.0 (contact@minecli.invalid)")
+            .header("User-Agent", "pyrite-launcher/0.1.0")
             .send()
             .await
             .map_err(|e| format!("Failed to search Modrinth: {}", e))?
@@ -688,7 +688,7 @@ impl ApiClient {
     pub async fn fetch_modpack_versions(&self, project_id: &str) -> Result<Vec<ModrinthVersion>, String> {
         let url = format!("https://api.modrinth.com/v2/project/{}/version", project_id);
         self.client.get(&url)
-            .header("User-Agent", "minecli/0.1.0 (contact@minecli.invalid)")
+            .header("User-Agent", "pyrite-launcher/0.1.0")
             .send()
             .await
             .map_err(|e| format!("Failed to fetch modpack versions: {}", e))?
@@ -720,7 +720,7 @@ impl ApiClient {
 
         self.client.get(url)
             .query(&[("query", query), ("facets", &facets_json)])
-            .header("User-Agent", "minecli/0.1.0 (contact@minecli.invalid)")
+            .header("User-Agent", "pyrite-launcher/0.1.0")
             .send()
             .await
             .map_err(|e| format!("Failed to search Modrinth: {}", e))?
@@ -742,7 +742,7 @@ impl ApiClient {
     pub async fn fetch_project(&self, project_id: &str) -> Result<ModrinthProject, String> {
         let url = format!("https://api.modrinth.com/v2/project/{}", project_id);
         self.client.get(&url)
-            .header("User-Agent", "minecli/0.1.0 (contact@minecli.invalid)")
+            .header("User-Agent", "pyrite-launcher/0.1.0")
             .send()
             .await
             .map_err(|e| format!("Failed to fetch Modrinth project: {}", e))?

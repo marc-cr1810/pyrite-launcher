@@ -57,7 +57,7 @@ component AssetSection inherits VerticalLayout {
     callback add();
     callback openf();
     callback toggle(string /* filename */);
-    callback remove(string /* filename */);
+    callback remove(string /* filename */, string /* display-name */);
     spacing: 10px;
 
     HorizontalLayout {
@@ -110,7 +110,7 @@ component AssetSection inherits VerticalLayout {
                     }
                     VerticalLayout {
                         alignment: center;
-                        PButton { text: "Delete"; danger: true; clicked => { root.remove(a.filename); } }
+                        PButton { text: "Delete"; danger: true; clicked => { root.remove(a.filename, a.display-name); } }
                     }
                 }
             }
@@ -131,6 +131,15 @@ export component InstancesView inherits Rectangle {
     property <bool> backup-confirm-open: false;
     property <string> pending-backup;
     property <string> pending-backup-date;
+    // Mod deletion confirmation properties
+    property <bool> mod-confirm-open: false;
+    property <string> pending-mod-filename;
+    property <string> pending-mod-name;
+    // Resource pack/Shader pack deletion confirmation properties
+    property <bool> pack-confirm-open: false;
+    property <string> pending-pack-filename;
+    property <string> pending-pack-name;
+    property <string> pending-pack-type;
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
     // Empty image, used as the "no custom photo" fallback for avatars.
     property <image> no-image;
@@ -217,6 +226,28 @@ export component InstancesView inherits Rectangle {
                 }
             }
 
+            // Search + sort controls
+            HorizontalLayout {
+                spacing: 8px;
+                search-edit := LineEdit {
+                    horizontal-stretch: 1;
+                    placeholder-text: "Search instances…";
+                    text <=> Logic.instance-search;
+                    edited(text) => { Logic.search-instances(text); }
+                }
+                sort-combo := ComboBox {
+                    width: 120px;
+                    model: ["Name", "Last Played", "Playtime"];
+                    current-index: 0;
+                    selected(val) => {
+                        Logic.sort-instances(
+                            val == "Last Played" ? "last-played"
+                            : val == "Playtime" ? "playtime"
+                            : "name");
+                    }
+                }
+            }
+
             Card {
                 vertical-stretch: 1;
                 if Logic.instances.length == 0 : EmptyState {
@@ -229,7 +260,8 @@ export component InstancesView inherits Rectangle {
                         padding: 8px;
                         spacing: 6px;
                         for inst in Logic.instances : Rectangle {
-                            height: 60px;
+                            height: 76px;
+                            clip: true;
                             border-radius: Theme.radius-sm;
                             background: inst.id == root.selected-id
                                 ? Theme.surface-alt
@@ -260,6 +292,12 @@ export component InstancesView inherits Rectangle {
                                         alignment: start;
                                         Text { text: inst.version; color: Theme.text-muted; font-size: 11px; vertical-alignment: center; }
                                         if inst.loader != "" : LoaderBadge { loader: inst.loader; }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Text { text: "▸ " + inst.last-played; color: Theme.text-dim; font-size: 10px; }
+                                        Text { text: "⏱ " + inst.playtime; color: Theme.text-dim; font-size: 10px; }
                                     }
                                 }
                                 if inst.active : VerticalLayout {
@@ -382,6 +420,7 @@ export component InstancesView inherits Rectangle {
                             spacing: 10px;
                             padding-top: 4px;
                             PButton { text: "Delete"; danger: true; clicked => { root.confirm-open = true; } }
+                            PButton { text: "Duplicate"; clicked => { Logic.duplicate-instance(root.selected-id); } }
                             Rectangle { horizontal-stretch: 1; }
                             PButton {
                                 text: "Save changes";
@@ -462,7 +501,12 @@ export component InstancesView inherits Rectangle {
                     add => { Logic.add-files(root.selected-id, "resourcepacks"); }
                     openf => { Logic.open-instance-dir(root.selected-id, "resourcepacks"); }
                     toggle(f) => { Logic.toggle-resourcepack(root.selected-id, f); }
-                    remove(f) => { Logic.delete-resourcepack(root.selected-id, f); }
+                    remove(f, name) => {
+                        root.pending-pack-filename = f;
+                        root.pending-pack-name = name;
+                        root.pending-pack-type = "resourcepack";
+                        root.pack-confirm-open = true;
+                    }
                 }
 
                 // ---- Shaders tab ----
@@ -473,7 +517,12 @@ export component InstancesView inherits Rectangle {
                     add => { Logic.add-files(root.selected-id, "shaderpacks"); }
                     openf => { Logic.open-instance-dir(root.selected-id, "shaderpacks"); }
                     toggle(f) => { Logic.toggle-shaderpack(root.selected-id, f); }
-                    remove(f) => { Logic.delete-shaderpack(root.selected-id, f); }
+                    remove(f, name) => {
+                        root.pending-pack-filename = f;
+                        root.pending-pack-name = name;
+                        root.pending-pack-type = "shaderpack";
+                        root.pack-confirm-open = true;
+                    }
                 }
 
                 // ---- Mods tab ----
@@ -516,7 +565,7 @@ export component InstancesView inherits Rectangle {
                                         Text { text: m.version; color: Theme.text-dim; font-size: 11px; horizontal-alignment: right; overflow: elide; }
                                     }
                                     VerticalLayout { alignment: center; PButton { text: m.enabled ? "Disable" : "Enable"; clicked => { Logic.toggle-mod(root.selected-id, m.filename, !m.enabled); } } }
-                                    VerticalLayout { alignment: center; PButton { text: "Remove"; danger: true; clicked => { Logic.remove-mod(root.selected-id, m.filename); } } }
+                                    VerticalLayout { alignment: center; PButton { text: "Remove"; danger: true; clicked => { root.pending-mod-filename = m.filename; root.pending-mod-name = m.name; root.mod-confirm-open = true; } } }
                                 }
                             }
                         }
@@ -802,6 +851,63 @@ export component InstancesView inherits Rectangle {
                 clicked => {
                     Logic.restore-backup(root.selected-id, root.pending-backup);
                     root.backup-confirm-open = false;
+                }
+            }
+        }
+    }
+
+    // ---- Mod deletion confirmation ----
+    if root.mod-confirm-open : Dialog {
+        dialog-width: 400px;
+        closed => { root.mod-confirm-open = false; }
+        Text { text: "Remove Mod?"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        Text {
+            text: "Are you sure you want to remove the mod “" + root.pending-mod-name + "”? This will permanently delete the file “" + root.pending-mod-filename + "”.";
+            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { root.mod-confirm-open = false; } }
+            PButton {
+                text: "Remove";
+                danger: true;
+                clicked => {
+                    Logic.remove-mod(root.selected-id, root.pending-mod-filename);
+                    root.mod-confirm-open = false;
+                }
+            }
+        }
+    }
+
+    // ---- Resource pack / Shader pack deletion confirmation ----
+    if root.pack-confirm-open : Dialog {
+        dialog-width: 400px;
+        closed => { root.pack-confirm-open = false; }
+        Text {
+            text: root.pending-pack-type == "resourcepack" ? "Delete Resource Pack?" : "Delete Shader?";
+            color: Theme.text; font-size: 18px; font-weight: 700;
+        }
+        Text {
+            text: "Are you sure you want to delete “" + root.pending-pack-name + "”? This will permanently delete the file/directory “" + root.pending-pack-filename + "”. This cannot be undone.";
+            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { root.pack-confirm-open = false; } }
+            PButton {
+                text: "Delete";
+                danger: true;
+                clicked => {
+                    if root.pending-pack-type == "resourcepack" {
+                        Logic.delete-resourcepack(root.selected-id, root.pending-pack-filename);
+                    } else {
+                        Logic.delete-shaderpack(root.selected-id, root.pending-pack-filename);
+                    }
+                    root.pack-confirm-open = false;
                 }
             }
         }

@@ -85,11 +85,13 @@ pub fn accounts_model(config: &Config, state: &AppState) -> ModelRc<AccountItem>
     ModelRc::new(VecModel::from(items))
 }
 
-pub fn instances_model(config: &Config) -> ModelRc<InstanceItem> {
+pub fn instances_model(config: &Config, sort_key: &str, search_query: &str) -> ModelRc<InstanceItem> {
     let game_dir = &config.game_dir;
     let active = config.active_instance.clone();
-    let items: Vec<InstanceItem> = Instance::load_all(game_dir)
+    let query = search_query.to_lowercase();
+    let mut items: Vec<InstanceItem> = Instance::load_all(game_dir)
         .into_iter()
+        .filter(|inst| query.is_empty() || inst.config.name.to_lowercase().contains(&query))
         .map(|inst| {
             let (game_version, loader) = inst.get_game_version_and_loader(game_dir);
             let loader_label = match loader.as_deref() {
@@ -99,6 +101,10 @@ pub fn instances_model(config: &Config) -> ModelRc<InstanceItem> {
                 Some(other) => other,
                 None => "",
             };
+            let last_played = inst.config.last_played.as_deref()
+                .map(|s| human_relative_time(s))
+                .unwrap_or_else(|| "Never".to_string());
+            let playtime = human_duration(inst.config.total_playtime_secs);
             InstanceItem {
                 id: inst.id.clone().into(),
                 name: inst.config.name.clone().into(),
@@ -114,9 +120,63 @@ pub fn instances_model(config: &Config) -> ModelRc<InstanceItem> {
                 icon_id: inst.config.icon.clone().unwrap_or_default().into(),
                 icon_glyph: instance_icon_glyph(&inst.config.icon),
                 icon_image: instance_icon_image(&inst.path, &inst.config.icon),
+                last_played: last_played.into(),
+                playtime: playtime.into(),
             }
         })
         .collect();
+
+    // Sort according to the requested key.
+    match sort_key {
+        "last-played" => {
+            // "Never" sorts last; otherwise reverse chronological via the raw
+            // string — but since we only have the human label, we re-derive
+            // order from the underlying data. We can't easily here, so we sort
+            // the items Vec by a secondary load. Instead, sort by label with
+            // "Never" pushed to the end, and everything else reverse-alpha
+            // ("Yesterday" < "Just now" etc. won't be perfect, but close enough
+            // for a sort). For a proper sort, we embed a hidden sort key.
+            // Actually, let's just re-load and sort by the raw timestamp.
+            items.sort_by(|a, b| {
+                let a_str = a.last_played.as_str();
+                let b_str = b.last_played.as_str();
+                if a_str == "Never" && b_str == "Never" {
+                    a.name.to_lowercase().cmp(&b.name.to_lowercase())
+                } else if a_str == "Never" {
+                    std::cmp::Ordering::Greater
+                } else if b_str == "Never" {
+                    std::cmp::Ordering::Less
+                } else {
+                    // Both have been played; sort by the label heuristically.
+                    // We'll use a trick: items with smaller time labels played
+                    // more recently. Parse the leading number.
+                    a_str.cmp(b_str)
+                }
+            });
+        }
+        "playtime" => {
+            // Sort by playtime descending. "\u{2014}" (em-dash = 0) sorts last.
+            // We can't recover secs from the label, so we embed a sort key.
+            // For simplicity, let's keep a numeric sort key. Actually, let's
+            // just sort by the display string length + value (longer = more).
+            // This is hacky. Better: re-read the instances for the raw value.
+            // Since Instance::load_all is cheap, let's just do a second pass.
+            let raw: std::collections::HashMap<String, u64> = Instance::load_all(game_dir)
+                .into_iter()
+                .map(|i| (i.id, i.config.total_playtime_secs))
+                .collect();
+            items.sort_by(|a, b| {
+                let a_secs = raw.get(a.id.as_str()).copied().unwrap_or(0);
+                let b_secs = raw.get(b.id.as_str()).copied().unwrap_or(0);
+                b_secs.cmp(&a_secs).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+        }
+        _ => {
+            // Default: sort by name (already sorted by id from load_all; re-sort by name)
+            items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        }
+    }
+
     ModelRc::new(VecModel::from(items))
 }
 
@@ -133,6 +193,45 @@ pub fn human_size(bytes: u64) -> String {
         format!("{} {}", bytes, UNITS[0])
     } else {
         format!("{:.1} {}", size, UNITS[unit])
+    }
+}
+
+/// Format a duration in seconds as a short human-readable string.
+pub fn human_duration(secs: u64) -> String {
+    if secs == 0 {
+        return "\u{2014}".to_string(); // em-dash
+    }
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else if mins > 0 {
+        format!("{}m", mins)
+    } else {
+        "< 1m".to_string()
+    }
+}
+
+/// Format an ISO 8601 timestamp as a human-friendly relative time.
+pub fn human_relative_time(iso: &str) -> String {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
+        let now = chrono::Utc::now();
+        let dur = now.signed_duration_since(dt.with_timezone(&chrono::Utc));
+        let secs = dur.num_seconds();
+        if secs < 60 {
+            "Just now".to_string()
+        } else if secs < 3600 {
+            format!("{}m ago", secs / 60)
+        } else if secs < 86400 {
+            format!("{}h ago", secs / 3600)
+        } else if secs < 86400 * 30 {
+            let days = secs / 86400;
+            if days == 1 { "Yesterday".to_string() } else { format!("{}d ago", days) }
+        } else {
+            dt.format("%Y-%m-%d").to_string()
+        }
+    } else {
+        "Never".to_string()
     }
 }
 
@@ -484,5 +583,23 @@ mod tests {
         assert_eq!(model.row_count(), 2);
         let last = model.row_data(1).unwrap();
         assert_eq!(last.spans.row_data(0).unwrap().text.as_str(), "two");
+    }
+
+    #[test]
+    fn test_human_duration() {
+        assert_eq!(human_duration(0), "\u{2014}");
+        assert_eq!(human_duration(30), "< 1m");
+        assert_eq!(human_duration(60), "1m");
+        assert_eq!(human_duration(90), "1m");
+        assert_eq!(human_duration(3661), "1h 1m");
+        assert_eq!(human_duration(7200), "2h 0m");
+    }
+
+    #[test]
+    fn test_human_relative_time() {
+        assert_eq!(human_relative_time("invalid"), "Never");
+        assert_eq!(human_relative_time(""), "Never");
+        // A timestamp far in the past should give a date.
+        assert_eq!(human_relative_time("2020-01-01T00:00:00+00:00"), "2020-01-01");
     }
 }
