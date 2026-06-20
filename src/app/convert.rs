@@ -138,6 +138,21 @@ fn strip_disabled(filename: &str) -> &str {
     filename.strip_suffix(".disabled").unwrap_or(filename)
 }
 
+/// Remove Minecraft formatting codes (`§` followed by a code char) so pack/mod
+/// descriptions read as plain text instead of showing raw `§6`, `§l`, etc.
+fn strip_mc_formatting(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '§' {
+            chars.next(); // drop the code character that follows
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Decode PNG bytes into a `slint::Image`, or an empty image on failure.
 fn image_from_png_bytes(bytes: &[u8]) -> Image {
     match image::load_from_memory(bytes) {
@@ -198,7 +213,7 @@ pub fn assets_model(dir: &Path, assets: &[AssetInfo]) -> ModelRc<AssetItem> {
             display_name: strip_disabled(&a.filename).into(),
             size: human_size(a.size_bytes).into(),
             enabled: a.enabled,
-            description: a.description.clone().unwrap_or_default().into(),
+            description: strip_mc_formatting(a.description.as_deref().unwrap_or_default()).into(),
             icon: load_pack_icon(&dir.join(&a.filename)),
         })
         .collect();
@@ -226,7 +241,7 @@ pub fn mods_model(mods: &[InstanceMod]) -> ModelRc<ModItem> {
             filename: m.filename.clone().into(),
             name: m.metadata.name.clone().into(),
             version: m.metadata.version.clone().into(),
-            description: m.metadata.description.clone().unwrap_or_default().into(),
+            description: strip_mc_formatting(m.metadata.description.as_deref().unwrap_or_default()).into(),
             enabled: m.enabled,
         })
         .collect();
