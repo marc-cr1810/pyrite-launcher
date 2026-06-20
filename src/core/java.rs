@@ -125,3 +125,20 @@ fn find_java_executable(dir: &Path, expected_subpath: &Path) -> Option<PathBuf> 
     }
     None
 }
+
+pub fn get_installed_java<P: AsRef<Path>>(game_dir: P, major_version: u32) -> Option<PathBuf> {
+    let game_dir = game_dir.as_ref();
+    let runtime_dir = game_dir.join("runtime").join(format!("java-{}", major_version));
+    let java_exe_subpath = if cfg!(target_os = "windows") {
+        Path::new("bin").join("java.exe")
+    } else if cfg!(target_os = "macos") {
+        Path::new("Contents").join("Home").join("bin").join("java")
+    } else {
+        Path::new("bin").join("java")
+    };
+    if runtime_dir.exists() {
+        find_java_executable(&runtime_dir, &java_exe_subpath)
+    } else {
+        None
+    }
+}

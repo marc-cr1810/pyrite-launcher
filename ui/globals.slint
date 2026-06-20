@@ -105,6 +105,14 @@ export struct VersionItem {
     kind: string,      // "release" / "snapshot" / loader version
 }
 
+export struct JavaRuntimeItem {
+    major: int,
+    name: string,
+    description: string,
+    status: string,
+    is-active: bool,
+}
+
 export struct LogLine {
     text: string,
     level: string,     // "error" / "warn" / "info" / "plain"
@@ -254,10 +262,12 @@ export global Logic {
     in-out property <string> jvm-args;
     in property <[string]> themes;
     in-out property <string> active-theme;
+    in property <[JavaRuntimeItem]> java-runtimes;
     in property <bool> java-installing;
     callback save-settings(string /* game-dir */, string /* java-path */, string /* jvm-args */);
     callback select-theme(string);
     callback install-java(int /* major version */);
+    callback use-java-runtime(int /* major */);
 
     // --- Crash diagnostics ---
     in-out property <bool> show-crash-dialog: false;

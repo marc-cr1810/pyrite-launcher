@@ -277,4 +277,9 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
         let weak = ui.as_weak();
         logic.on_install_java(move |major| settings::install_java(&st, &weak, major));
     }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_use_java_runtime(move |major| settings::use_java_runtime(&st, &weak, major));
+    }
 }

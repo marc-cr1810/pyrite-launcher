@@ -13,7 +13,7 @@ use crate::core::assets::{AssetInfo, ScreenshotInfo, WorldInfo};
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::{Instance, InstanceMod};
 use crate::{
-    AccountItem, AssetItem, BackupItem, FmtLine, FmtSpan, InstanceItem, LogLine, ModItem,
+    AccountItem, AssetItem, BackupItem, FmtLine, FmtSpan, InstanceItem, JavaRuntimeItem, LogLine, ModItem,
     ScreenshotItem, WorldItem,
 };
 
@@ -43,6 +43,66 @@ pub fn initial(name: &str) -> SharedString {
         .map(|c| c.to_uppercase().to_string())
         .unwrap_or_else(|| "?".to_string())
         .into()
+}
+
+pub fn java_runtimes_model(config: &Config) -> ModelRc<JavaRuntimeItem> {
+    let game_dir = &config.game_dir;
+    let current_java_path = &config.java_path;
+    let mut items = Vec::new();
+
+    let is_active = |major: u32, path: &std::path::Path| -> bool {
+        if path == std::path::Path::new("java") || path.to_string_lossy().trim().is_empty() {
+            false
+        } else {
+            if let Some(installed_path) = crate::core::java::get_installed_java(game_dir, major) {
+                if let (Ok(p1), Ok(p2)) = (path.canonicalize(), installed_path.canonicalize()) {
+                    p1 == p2
+                } else {
+                    path == &installed_path
+                }
+            } else {
+                false
+            }
+        }
+    };
+
+    let is_auto_active = current_java_path == std::path::Path::new("java") || current_java_path.to_string_lossy().trim().is_empty();
+    items.push(JavaRuntimeItem {
+        major: 0,
+        name: "Auto-detect (Recommended)".into(),
+        description: "Automatically download and use the correct version required by the Minecraft instance.".into(),
+        status: if is_auto_active { "Active".into() } else { "Installed".into() },
+        is_active: is_auto_active,
+    });
+
+    let versions = [
+        (25, "Adoptium JRE 25 (Required for Minecraft 1.21.5+ / 26.2+)"),
+        (21, "Adoptium JRE 21 (Required for Minecraft 1.20.5 - 1.21.4)"),
+        (17, "Adoptium JRE 17 (Required for Minecraft 1.18 - 1.20.4)"),
+        (8, "Adoptium JRE 8 (Required for Minecraft 1.12.2 and older)"),
+    ];
+
+    for (major, desc) in versions {
+        let is_installed = crate::core::java::get_installed_java(game_dir, major).is_some();
+        let active = is_active(major, current_java_path);
+        let status = if active {
+            "Active".into()
+        } else if is_installed {
+            "Installed".into()
+        } else {
+            "Not installed".into()
+        };
+
+        items.push(JavaRuntimeItem {
+            major: major as i32,
+            name: format!("Java {major}").into(),
+            description: desc.into(),
+            status,
+            is_active: active,
+        });
+    }
+
+    ModelRc::new(VecModel::from(items))
 }
 
 /// A stable, pleasant color derived from a key (uuid / instance id), so each

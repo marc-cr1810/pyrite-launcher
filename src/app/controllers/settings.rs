@@ -80,6 +80,45 @@ pub fn install_java(state: &AppState, weak: &Weak<MainWindow>, major: i32) {
     });
 }
 
+pub fn use_java_runtime(state: &AppState, weak: &Weak<MainWindow>, major: i32) {
+    let state = state.clone();
+    let weak = weak.clone();
+    state.rt.clone().spawn(async move {
+        let game_dir = state.game_dir();
+        let path = if major == 0 {
+            std::path::PathBuf::from("java")
+        } else {
+            match crate::core::java::get_installed_java(&game_dir, major as u32) {
+                Some(p) => p,
+                None => {
+                    let _ = weak.upgrade_in_event_loop(move |ui| {
+                        ui::set_status(&ui, format!("Java {major} is not installed locally."));
+                    });
+                    return;
+                }
+            }
+        };
+
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.java_path = path.clone();
+            let _ = cfg.save();
+        }
+
+        let st = state.clone();
+        let summary = if major == 0 {
+            "Java path set to Auto-detect.".to_string()
+        } else {
+            format!("Java path set to Java {major}: {}", path.display())
+        };
+
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui::refresh_settings(&ui, &st.config.lock().unwrap());
+            ui::set_status(&ui, summary);
+        });
+    });
+}
+
 fn set_java_installing(weak: &Weak<MainWindow>, installing: bool) {
     let _ = weak.upgrade_in_event_loop(move |ui| {
         ui.global::<crate::Logic>().set_java_installing(installing);

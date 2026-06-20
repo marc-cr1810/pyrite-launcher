@@ -75,6 +75,9 @@ pub fn refresh_settings(ui: &MainWindow, config: &Config) {
     logic.set_game_dir(config.game_dir.to_string_lossy().to_string().into());
     logic.set_java_path(config.java_path.to_string_lossy().to_string().into());
     logic.set_jvm_args(config.jvm_args.join(" ").into());
+
+    let runtimes = convert::java_runtimes_model(config);
+    logic.set_java_runtimes(runtimes);
 }
 
 pub fn refresh_themes(ui: &MainWindow, state: &AppState) {

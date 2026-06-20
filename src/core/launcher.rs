@@ -360,14 +360,14 @@ impl Launcher {
             let path = std::path::PathBuf::from(inst_java_path_str);
             if path.exists() {
                 log_info(format!("Using instance custom Java path: {}", inst_java_path_str));
-                java_version = instance.config.java_version.unwrap_or(21);
+                java_version = get_java_version(&path).unwrap_or_else(|| instance.config.java_version.unwrap_or(21));
                 path
             } else {
                 return Err(format!("Custom instance Java path does not exist: {}", inst_java_path_str));
             }
         } else if self.config.java_path != std::path::Path::new("java") && self.config.java_path.exists() {
             log_info(format!("Using global custom Java path: {}", self.config.java_path.display()));
-            java_version = instance.config.java_version.unwrap_or(21);
+            java_version = get_java_version(&self.config.java_path).unwrap_or_else(|| instance.config.java_version.unwrap_or(21));
             std::path::PathBuf::from(&self.config.java_path)
         } else {
             let jv = instance.config.java_version
@@ -383,6 +383,17 @@ impl Launcher {
                 }
             }).await?
         };
+
+        // Validate that the Java major version meets the game's requirement
+        if let Some(ref req_java) = details.javaVersion {
+            let req_version = req_java.majorVersion;
+            if java_version < req_version {
+                return Err(format!(
+                    "Incompatible Java version! Game requires Java {}, but the selected Java path provides Java {}. Please go to Settings and change the Java runtime.",
+                    req_version, java_version
+                ));
+            }
+        }
 
         // Filter out incompatible JVM arguments for Java versions < 22
         let mut final_jvm_args = jvm_args.clone();
@@ -600,4 +611,65 @@ fn extract_xuid_from_token(token: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn get_java_version(java_exe: &std::path::Path) -> Option<u32> {
+    let output = std::process::Command::new(java_exe)
+        .arg("-version")
+        .output()
+        .ok()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{}\n{}", stderr, stdout);
+    parse_java_version_output(&combined)
+}
+
+fn parse_java_version_output(output: &str) -> Option<u32> {
+    for line in output.lines() {
+        if line.contains("version") {
+            if let Some(start) = line.find('"') {
+                if let Some(end) = line[start + 1..].find('"') {
+                    let version_str = &line[start + 1..start + 1 + end];
+                    let parts: Vec<&str> = version_str.split('.').collect();
+                    if !parts.is_empty() {
+                        if parts[0] == "1" && parts.len() > 1 {
+                            let digits: String = parts[1].chars().take_while(|c| c.is_ascii_digit()).collect();
+                            if let Ok(v) = digits.parse::<u32>() {
+                                return Some(v);
+                            }
+                        } else {
+                            let digits: String = parts[0].chars().take_while(|c| c.is_ascii_digit()).collect();
+                            if let Ok(v) = digits.parse::<u32>() {
+                                return Some(v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_java_version_legacy() {
+        let output = "java version \"1.8.0_392\"\nJava(TM) SE Runtime Environment (build 1.8.0_392-b08)";
+        assert_eq!(parse_java_version_output(output), Some(8));
+    }
+
+    #[test]
+    fn test_parse_java_version_modern() {
+        let output = "openjdk version \"17.0.9\" 2023-10-17\nOpenJDK Runtime Environment Temurin-17.0.9+9 (build 17.0.9+9)";
+        assert_eq!(parse_java_version_output(output), Some(17));
+
+        let output2 = "openjdk version \"21.0.2\" 2024-01-16 LTS\nOpenJDK Runtime Environment Temurin-21.0.2+13 (build 21.0.2+13)";
+        assert_eq!(parse_java_version_output(output2), Some(21));
+
+        let output3 = "openjdk version \"25-beta\" 2025-09-16\nOpenJDK Runtime Environment (build 25-beta+1)";
+        assert_eq!(parse_java_version_output(output3), Some(25));
+    }
 }

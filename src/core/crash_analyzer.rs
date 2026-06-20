@@ -30,8 +30,9 @@ pub fn analyze_crash(instance_path: &Path, latest_log_content: &str) -> Option<C
             title: "Incompatible Java Version".to_string(),
             description: "The game exited because it was run with a JRE version that is older than what the game or one of your mods requires.".to_string(),
             possible_solutions: vec![
-                "Open the instance settings (press 'E' in the TUI or use CLI 'edit') and set a newer Java version (e.g. 17 or 21).".to_string(),
-                "If using a custom Java path, ensure it points to a modern Java installation.".to_string(),
+                "Open the Settings tab and select or download a newer Java version (e.g. Java 25 or 21) under the Java Runtimes card.".to_string(),
+                "Select 'Auto-detect (Recommended)' in Settings to automatically download and run the correct Java version for each instance.".to_string(),
+                "If using a custom Java path, ensure it points to a compatible Java installation.".to_string(),
             ],
         });
     }

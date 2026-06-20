@@ -42,37 +42,80 @@ export component SettingsView inherits VerticalLayout {
                 VerticalLayout {
                     padding: 20px;
                     spacing: 12px;
-                    Text { text: "Java runtime"; color: Theme.text; font-size: 16px; font-weight: 700; }
+                    Text { text: "Java Runtimes"; color: Theme.text; font-size: 16px; font-weight: 700; }
                     Text {
-                        text: "Download an Adoptium JRE into the game folder's 'runtime' directory and set it as the Java path above.";
+                        text: "Manage the local JREs installed in the launcher's 'runtime' directory. Auto-detect will run the exact JRE version recommended by Mojang for each Minecraft version.";
                         color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
                     }
-                    HorizontalLayout {
-                        spacing: 12px;
-                        VerticalLayout {
-                            spacing: 6px;
-                            width: 150px;
-                            Text { text: "Major version"; color: Theme.text-muted; font-size: 12px; }
-                            java-ver-combo := ComboBox {
-                                model: ["21", "17", "8"];
-                                current-index: 0;
-                                enabled: !Logic.java-installing;
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: end;
-                            horizontal-stretch: 1;
+                    VerticalLayout {
+                        spacing: 8px;
+                        for item in Logic.java-runtimes : Rectangle {
+                            background: item.is-active ? Theme.surface-alt : transparent;
+                            border-radius: Theme.radius-sm;
+                            border-width: item.is-active ? 1px : 0px;
+                            border-color: Theme.border;
+                            
                             HorizontalLayout {
-                                alignment: end;
-                                PButton {
-                                    text: Logic.java-installing ? "Downloading…" : "Download & use";
-                                    primary: true;
-                                    enabled: !Logic.java-installing;
-                                    clicked => {
-                                        Logic.install-java(
-                                            java-ver-combo.current-value == "21" ? 21
-                                            : java-ver-combo.current-value == "17" ? 17
-                                            : 8);
+                                padding: 12px;
+                                spacing: 16px;
+                                alignment: space-between;
+                                
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Text {
+                                            text: item.name;
+                                            color: item.is-active ? Theme.success : Theme.text;
+                                            font-size: 14px;
+                                            font-weight: 700;
+                                        }
+                                        if item.is-active : Rectangle {
+                                            background: Theme.success.with-alpha(0.2);
+                                            border-radius: 4px;
+                                            border-width: 1px;
+                                            border-color: Theme.success;
+                                            width: 58px;
+                                            height: 18px;
+                                            Text {
+                                                text: "ACTIVE";
+                                                color: Theme.success;
+                                                font-size: 10px;
+                                                font-weight: 700;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        text: item.description;
+                                        color: Theme.text-muted;
+                                        font-size: 11px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                                
+                                VerticalLayout {
+                                    alignment: center;
+                                    if item.status == "Active" : Text {
+                                        text: "Active";
+                                        color: Theme.success;
+                                        font-size: 12px;
+                                        font-weight: 700;
+                                        horizontal-alignment: right;
+                                    }
+                                    if item.status == "Installed" : PButton {
+                                        text: "Use";
+                                        primary: false;
+                                        clicked => { Logic.use-java-runtime(item.major); }
+                                    }
+                                    if item.status == "Not installed" : PButton {
+                                        text: Logic.java-installing ? "Installing..." : "Download & use";
+                                        primary: true;
+                                        enabled: !Logic.java-installing;
+                                        clicked => { Logic.install-java(item.major); }
                                     }
                                 }
                             }
