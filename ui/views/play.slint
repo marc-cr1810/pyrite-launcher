@@ -215,7 +215,7 @@ export component PlayView inherits VerticalLayout {
             VerticalLayout {
                 alignment: center;
                 PButton {
-                    text: Logic.is-busy ? "Working…" : "▶  Play";
+                    text: Logic.game-running ? "Playing…" : Logic.is-busy ? "Working…" : "▶  Play";
                     primary: true;
                     enabled: Logic.can-play && !Logic.is-busy;
                     min-width: 170px;
@@ -256,6 +256,8 @@ export component PlayView inherits VerticalLayout {
 
     // ---- Progress ----
     if Logic.progress-active : VerticalLayout {
+        // Pin to natural height; the log Card below absorbs the leftover space.
+        vertical-stretch: 0;
         spacing: 6px;
         HorizontalLayout {
             Text { text: Logic.status-text; color: Theme.text-muted; font-size: 13px; horizontal-stretch: 1; overflow: elide; }

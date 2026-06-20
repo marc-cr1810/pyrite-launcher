@@ -109,7 +109,13 @@ export component MainWindow inherits Window {
                             vertical-alignment: center;
                             horizontal-stretch: 1;
                         }
-                        if Logic.is-busy : Text {
+                        if Logic.game-running : Text {
+                            text: "● playing";
+                            color: Theme.success;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        if Logic.is-busy && !Logic.game-running : Text {
                             text: "● working…";
                             color: Theme.warning;
                             font-size: 12px;

@@ -228,6 +228,7 @@ export global Logic {
 
     // --- Launch / progress / logs ---
     in property <bool> is-busy;
+    in property <bool> game-running; // the game process is live (vs. preparing)
     in property <string> status-text;
     in property <bool> progress-active;
     in property <bool> progress-indeterminate; // animated sweep for phases with no measurable progress

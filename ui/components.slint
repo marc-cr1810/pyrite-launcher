@@ -85,19 +85,19 @@ export component PProgress inherits Rectangle {
         animate width { duration: 120ms; }
     }
 
-    // Indeterminate sweep.
+    // Indeterminate sweep — a segment that loops left→right while active.
+    // Driven by animation-tick() (gated on `indeterminate` so it doesn't keep
+    // the window repainting when idle) instead of an `animate` block, which
+    // would only run once because the target value is constant.
     sweep := Rectangle {
         visible: root.indeterminate;
+        property <duration> elapsed: root.indeterminate ? animation-tick() : 0ms;
+        property <float> phase: Math.mod(self.elapsed / 1ms, 1400) / 1400;
         width: parent.width * 0.35;
         height: parent.height;
         border-radius: 4px;
         background: Theme.accent;
-        x: root.indeterminate ? parent.width - self.width : -self.width;
-        animate x {
-            duration: 1100ms;
-            iteration-count: -1;
-            easing: ease-in-out;
-        }
+        x: -self.width + (parent.width + self.width) * self.phase;
     }
 }
 

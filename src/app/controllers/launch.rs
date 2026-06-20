@@ -112,8 +112,23 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
         let (log_tx, mut log_rx) = mpsc::channel::<String>(1024);
         let log_buf = state.log_buf.clone();
         let log_dirty = state.log_dirty.clone();
+        let weak_run = weak.clone();
         let consumer = std::thread::spawn(move || {
+            let mut launched = false;
             while let Some(line) = log_rx.blocking_recv() {
+                // The launcher emits this exactly when the game process spawns;
+                // switch from the "preparing" UI to a "running" state so the
+                // progress bar stops and the header reflects gameplay.
+                if !launched && line.starts_with("Launch command:") {
+                    launched = true;
+                    let _ = weak_run.upgrade_in_event_loop(|ui| {
+                        let logic = ui.global::<Logic>();
+                        logic.set_progress_active(false);
+                        logic.set_progress_indeterminate(false);
+                        logic.set_game_running(true);
+                        ui::set_status(&ui, "Minecraft running.");
+                    });
+                }
                 log_buf.lock().unwrap().push(line);
                 log_dirty.store(true, Ordering::SeqCst);
             }
@@ -239,6 +254,7 @@ fn finish(state: &AppState, weak: &Weak<MainWindow>) {
     *state.busy.lock().unwrap() = false;
     set_busy(weak, false);
     ui::progress_async(weak, false, 0.0);
+    let _ = weak.upgrade_in_event_loop(|ui| ui.global::<Logic>().set_game_running(false));
 }
 
 fn set_busy(weak: &Weak<MainWindow>, busy: bool) {
