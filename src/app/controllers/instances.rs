@@ -37,6 +37,70 @@ pub fn delete(state: &AppState, weak: &Weak<MainWindow>, id: String) {
     refresh(state, weak);
 }
 
+/// Edit a vanilla, non-version field on an existing instance: display name and
+/// the per-instance launch overrides. Version/loader changes are intentionally
+/// out of scope here (they require re-resolving the loader profile).
+pub fn edit(
+    state: &AppState,
+    weak: &Weak<MainWindow>,
+    id: String,
+    name: String,
+    jvm_args: String,
+    java_path: String,
+    pre_launch: String,
+    post_exit: String,
+) {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        status(weak, "Instance name cannot be empty.");
+        return;
+    }
+
+    let game_dir = state.game_dir();
+    let path = game_dir.join("instances").join(&id);
+    let mut inst = match Instance::load(&id, path) {
+        Ok(inst) => inst,
+        Err(e) => {
+            status(weak, format!("Failed to load instance: {e}"));
+            return;
+        }
+    };
+
+    inst.config.name = name;
+    inst.config.jvm_args = split_args(&jvm_args);
+    inst.config.java_path = none_if_blank(java_path);
+    inst.config.pre_launch = none_if_blank(pre_launch);
+    inst.config.post_exit = none_if_blank(post_exit);
+
+    if let Err(e) = inst.save() {
+        status(weak, format!("Failed to save instance: {e}"));
+        return;
+    }
+    status(weak, "Instance updated.");
+    refresh(state, weak);
+}
+
+/// Split a whitespace-separated argument string into a vector, or `None` if it
+/// has no arguments (so the field is omitted from instance.toml).
+fn split_args(s: &str) -> Option<Vec<String>> {
+    let args: Vec<String> = s.split_whitespace().map(|a| a.to_string()).collect();
+    if args.is_empty() {
+        None
+    } else {
+        Some(args)
+    }
+}
+
+/// Trim a string and return `None` if it is empty.
+fn none_if_blank(s: String) -> Option<String> {
+    let s = s.trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
 pub fn create(
     state: &AppState,
     weak: &Weak<MainWindow>,

@@ -5,16 +5,47 @@ import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 export component InstancesView inherits Rectangle {
     property <bool> dialog-open: false;
     property <bool> confirm-open: false;
-    property <string> pending-id;
-    property <string> pending-name;
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
 
-    VerticalLayout {
+    // Which instance the detail/edit pane is showing ("" = nothing selected).
+    property <string> selected-id;
+    // Snapshot of the selected instance's display identity (avatar/version/loader).
+    property <string> sel-version;
+    property <string> sel-loader;
+    property <string> sel-initial;
+    property <color> sel-color;
+    property <bool> sel-active;
+    // Editable fields, seeded from the selected instance on selection.
+    property <string> edit-name;
+    property <string> edit-jvm-args;
+    property <string> edit-java-path;
+    property <string> edit-pre-launch;
+    property <string> edit-post-exit;
+
+    // Seed the detail pane from a list row.
+    function select-row(inst: InstanceItem) {
+        root.selected-id = inst.id;
+        root.sel-version = inst.version;
+        root.sel-loader = inst.loader;
+        root.sel-initial = inst.initial;
+        root.sel-color = inst.avatar-color;
+        root.sel-active = inst.active;
+        root.edit-name = inst.name;
+        root.edit-jvm-args = inst.jvm-args;
+        root.edit-java-path = inst.java-path;
+        root.edit-pre-launch = inst.pre-launch;
+        root.edit-post-exit = inst.post-exit;
+    }
+
+    HorizontalLayout {
         padding: 24px;
         spacing: 18px;
 
-        HorizontalLayout {
-            Rectangle { }
+        // ---- Left: instance list ----
+        VerticalLayout {
+            width: 320px;
+            spacing: 12px;
+
             PButton {
                 text: "+ New Instance";
                 primary: true;
@@ -23,70 +54,171 @@ export component InstancesView inherits Rectangle {
                     Logic.load-versions();
                 }
             }
-        }
 
-        Card {
-            vertical-stretch: 1;
-            if Logic.instances.length == 0 : EmptyState {
-                icon: "▤";
-                title: "No instances yet";
-                subtitle: "Create one to choose a Minecraft version and mod loader.";
-                action-text: "+ Create your first instance";
-                action => {
-                    root.dialog-open = true;
-                    Logic.load-versions();
+            Card {
+                vertical-stretch: 1;
+                if Logic.instances.length == 0 : EmptyState {
+                    icon: "▤";
+                    title: "No instances yet";
+                    subtitle: "Create one to choose a Minecraft version and mod loader.";
                 }
-            }
-            if Logic.instances.length > 0 : ScrollView {
-                VerticalLayout {
-                    padding: 8px;
-                    spacing: 6px;
-                    for inst in Logic.instances : Rectangle {
-                        height: 66px;
-                        border-radius: Theme.radius-sm;
-                        background: inst.active ? Theme.surface-alt : transparent;
-                        border-width: 1px;
-                        border-color: inst.active ? Theme.accent : transparent;
-                        HorizontalLayout {
-                            padding: 12px;
-                            spacing: 12px;
-                            VerticalLayout {
-                                alignment: center;
-                                Avatar { initial: inst.initial; tint: inst.avatar-color; size: 42px; selected: inst.active; }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: 4px;
-                                horizontal-stretch: 1;
-                                Text { text: inst.name; color: Theme.text; font-size: 16px; font-weight: 600; overflow: elide; }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    alignment: start;
-                                    Text { text: inst.version; color: Theme.text-muted; font-size: 12px; vertical-alignment: center; }
-                                    if inst.loader != "" : LoaderBadge { loader: inst.loader; }
-                                    if inst.active : Text { text: "● active"; color: Theme.success; font-size: 11px; vertical-alignment: center; }
+                if Logic.instances.length > 0 : ScrollView {
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 6px;
+                        for inst in Logic.instances : Rectangle {
+                            height: 60px;
+                            border-radius: Theme.radius-sm;
+                            background: inst.id == root.selected-id
+                                ? Theme.surface-alt
+                                : (row-touch.has-hover ? Theme.surface-hover : transparent);
+                            border-width: 1px;
+                            border-color: inst.id == root.selected-id ? Theme.accent : transparent;
+                            animate background { duration: 100ms; }
+                            HorizontalLayout {
+                                padding: 10px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Avatar { initial: inst.initial; tint: inst.avatar-color; size: 38px; selected: inst.active; }
                                 }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                PButton {
-                                    text: inst.active ? "Active" : "Use";
-                                    primary: !inst.active;
-                                    enabled: !inst.active;
-                                    clicked => { Logic.select-instance(inst.id); }
-                                }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                PButton {
-                                    text: "Delete";
-                                    danger: true;
-                                    clicked => {
-                                        root.pending-id = inst.id;
-                                        root.pending-name = inst.name;
-                                        root.confirm-open = true;
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 3px;
+                                    horizontal-stretch: 1;
+                                    Text { text: inst.name; color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide; }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        Text { text: inst.version; color: Theme.text-muted; font-size: 11px; vertical-alignment: center; }
+                                        if inst.loader != "" : LoaderBadge { loader: inst.loader; }
                                     }
                                 }
+                                if inst.active : VerticalLayout {
+                                    alignment: center;
+                                    Text { text: "●"; color: Theme.success; font-size: 11px; }
+                                }
+                            }
+                            row-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.select-row(inst); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Right: detail / edit pane ----
+        Card {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+
+            if root.selected-id == "" : EmptyState {
+                icon: "✎";
+                title: "Select an instance";
+                subtitle: "Pick an instance on the left to view and edit its settings.";
+            }
+
+            if root.selected-id != "" : ScrollView {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 14px;
+
+                    // Header: avatar + live name + version/loader.
+                    HorizontalLayout {
+                        spacing: 14px;
+                        VerticalLayout {
+                            alignment: center;
+                            Avatar { initial: root.sel-initial; tint: root.sel-color; size: 52px; selected: root.sel-active; }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            Text { text: root.edit-name; color: Theme.text; font-size: 20px; font-weight: 700; overflow: elide; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Text { text: root.sel-version; color: Theme.text-muted; font-size: 13px; vertical-alignment: center; }
+                                if root.sel-loader != "" : LoaderBadge { loader: root.sel-loader; }
+                                if root.sel-active : Text { text: "● active"; color: Theme.success; font-size: 12px; vertical-alignment: center; }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            PButton {
+                                text: root.sel-active ? "Active" : "Use";
+                                primary: !root.sel-active;
+                                enabled: !root.sel-active;
+                                clicked => {
+                                    Logic.select-instance(root.selected-id);
+                                    root.sel-active = true;
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.border; }
+
+                    Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
+                    name-edit := LineEdit {
+                        text <=> root.edit-name;
+                        placeholder-text: "My instance";
+                    }
+
+                    Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
+                    jvm-edit := LineEdit {
+                        text <=> root.edit-jvm-args;
+                        placeholder-text: "-Xmx4G -XX:+UseG1GC";
+                    }
+
+                    Text { text: "Java path"; color: Theme.text-muted; font-size: 12px; }
+                    java-edit := LineEdit {
+                        text <=> root.edit-java-path;
+                        placeholder-text: "Leave blank to use the default Java";
+                    }
+
+                    Text { text: "Pre-launch command"; color: Theme.text-muted; font-size: 12px; }
+                    pre-edit := LineEdit {
+                        text <=> root.edit-pre-launch;
+                        placeholder-text: "Optional command run before launch";
+                    }
+
+                    Text { text: "Post-exit command"; color: Theme.text-muted; font-size: 12px; }
+                    post-edit := LineEdit {
+                        text <=> root.edit-post-exit;
+                        placeholder-text: "Optional command run after the game exits";
+                    }
+
+                    Text {
+                        text: "To change the Minecraft version or mod loader, create a new instance.";
+                        color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        padding-top: 4px;
+                        PButton {
+                            text: "Delete";
+                            danger: true;
+                            clicked => { root.confirm-open = true; }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        PButton {
+                            text: "Save changes";
+                            primary: true;
+                            enabled: root.edit-name != "";
+                            clicked => {
+                                Logic.edit-instance(
+                                    root.selected-id,
+                                    root.edit-name,
+                                    root.edit-jvm-args,
+                                    root.edit-java-path,
+                                    root.edit-pre-launch,
+                                    root.edit-post-exit);
                             }
                         }
                     }
@@ -102,7 +234,7 @@ export component InstancesView inherits Rectangle {
         Text { text: "New Instance"; color: Theme.text; font-size: 18px; font-weight: 700; }
 
         Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
-        name-edit := LineEdit { placeholder-text: "My instance"; }
+        create-name-edit := LineEdit { placeholder-text: "My instance"; }
 
         Text { text: "Minecraft version"; color: Theme.text-muted; font-size: 12px; }
         version-combo := ComboBox {
@@ -142,15 +274,15 @@ export component InstancesView inherits Rectangle {
             PButton {
                 text: "Create";
                 primary: true;
-                enabled: name-edit.text != "" && version-combo.current-value != "";
+                enabled: create-name-edit.text != "" && version-combo.current-value != "";
                 clicked => {
                     Logic.create-instance(
-                        name-edit.text,
+                        create-name-edit.text,
                         version-combo.current-value,
                         loader-combo.current-value == "Vanilla" ? "" : loader-combo.current-value,
                         "");
                     root.dialog-open = false;
-                    name-edit.text = "";
+                    create-name-edit.text = "";
                 }
             }
         }
@@ -162,7 +294,7 @@ export component InstancesView inherits Rectangle {
         closed => { root.confirm-open = false; }
         Text { text: "Delete instance?"; color: Theme.text; font-size: 18px; font-weight: 700; }
         Text {
-            text: "“" + root.pending-name + "” and all of its files will be permanently removed. This cannot be undone.";
+            text: "“" + root.edit-name + "” and all of its files will be permanently removed. This cannot be undone.";
             color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
         }
         HorizontalLayout {
@@ -174,7 +306,8 @@ export component InstancesView inherits Rectangle {
                 text: "Delete";
                 danger: true;
                 clicked => {
-                    Logic.delete-instance(root.pending-id);
+                    Logic.delete-instance(root.selected-id);
+                    root.selected-id = "";
                     root.confirm-open = false;
                 }
             }

@@ -79,6 +79,10 @@ pub fn instances_model(config: &Config) -> ModelRc<InstanceItem> {
                 active: active.as_deref() == Some(inst.id.as_str()),
                 initial: initial(&inst.config.name),
                 avatar_color: avatar_color(&inst.id),
+                jvm_args: inst.config.jvm_args.as_deref().unwrap_or(&[]).join(" ").into(),
+                java_path: inst.config.java_path.clone().unwrap_or_default().into(),
+                pre_launch: inst.config.pre_launch.clone().unwrap_or_default().into(),
+                post_exit: inst.config.post_exit.clone().unwrap_or_default().into(),
             }
         })
         .collect();

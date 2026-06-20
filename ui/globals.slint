@@ -22,6 +22,11 @@ export struct InstanceItem {
     active: bool,
     initial: string,       // first letter, for the monogram avatar
     avatar-color: color,   // stable color derived from the instance
+    // Per-instance launch overrides (empty string = unset), for the edit dialog
+    jvm-args: string,
+    java-path: string,
+    pre-launch: string,
+    post-exit: string,
 }
 
 export struct VersionItem {
@@ -87,6 +92,8 @@ export global Logic {
     callback delete-instance(string /* id */);
     // name, game-version, loader ("" = vanilla), loader-version ("" = auto)
     callback create-instance(string, string, string, string);
+    // id, name, jvm-args, java-path, pre-launch, post-exit (empty string = unset)
+    callback edit-instance(string, string, string, string, string, string);
     // Version picker data for the create dialog (plain strings for ComboBox)
     in property <[string]> version-list;
     in property <bool> versions-loading;

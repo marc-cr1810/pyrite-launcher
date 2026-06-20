@@ -71,6 +71,22 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     {
         let st = state.clone();
         let weak = ui.as_weak();
+        logic.on_edit_instance(move |id, name, jvm_args, java_path, pre_launch, post_exit| {
+            instances::edit(
+                &st,
+                &weak,
+                id.to_string(),
+                name.to_string(),
+                jvm_args.to_string(),
+                java_path.to_string(),
+                pre_launch.to_string(),
+                post_exit.to_string(),
+            );
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
         logic.on_load_versions(move || versions::load_versions(&st, &weak));
     }
     {
