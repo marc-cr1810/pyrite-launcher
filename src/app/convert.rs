@@ -136,9 +136,18 @@ pub fn human_size(bytes: u64) -> String {
     }
 }
 
-/// Strip a trailing ".disabled" for display, leaving the user-facing name.
-fn strip_disabled(filename: &str) -> &str {
-    filename.strip_suffix(".disabled").unwrap_or(filename)
+/// User-facing pack name: drop the ".disabled" enable/disable marker and the
+/// archive extension (e.g. "Cool Pack.zip.disabled" -> "Cool Pack"). Folder
+/// packs (no extension) are left as-is.
+fn display_pack_name(filename: &str) -> String {
+    let base = filename.strip_suffix(".disabled").unwrap_or(filename);
+    let lower = base.to_ascii_lowercase();
+    for ext in [".zip", ".rpo"] {
+        if lower.ends_with(ext) {
+            return base[..base.len() - ext.len()].to_string();
+        }
+    }
+    base.to_string()
 }
 
 /// Default span color when no `§` color code is active (matches Theme.text-muted).
@@ -170,9 +179,14 @@ fn mc_color(code: char) -> Option<(u8, u8, u8)> {
 /// Parse a Minecraft `§`-formatted string into colored lines/spans for rendering.
 /// Color codes set the color and reset bold/italic (MC semantics); `l`/`o` add
 /// bold/italic; `r` resets all. Other codes (`k`/`m`/`n`) are ignored.
-pub fn parse_formatted(s: &str) -> ModelRc<FmtLine> {
-    let lines: Vec<FmtLine> = s
+/// Parse a Minecraft `§`-formatted string into colored, styled lines. At most
+/// `max_lines` lines are emitted (descriptions render in fixed-height list rows,
+/// so unbounded multi-line text would overflow); an ellipsis marks truncation.
+pub fn parse_formatted(s: &str, max_lines: usize) -> ModelRc<FmtLine> {
+    let total = s.split('\n').count();
+    let mut line_spans: Vec<Vec<FmtSpan>> = s
         .split('\n')
+        .take(max_lines.max(1))
         .map(|line| {
             let mut spans: Vec<FmtSpan> = Vec::new();
             let mut buf = String::new();
@@ -217,9 +231,24 @@ pub fn parse_formatted(s: &str) -> ModelRc<FmtLine> {
                 }
             }
             flush(&mut spans, &mut buf, color, bold, italic);
-            FmtLine {
-                spans: ModelRc::new(VecModel::from(spans)),
+            spans
+        })
+        .collect();
+
+    // If we dropped lines, append an ellipsis to the last visible line so the
+    // truncation is visible rather than silent.
+    if total > line_spans.len() {
+        if let Some(last) = line_spans.iter_mut().rev().find(|s| !s.is_empty()) {
+            if let Some(span) = last.last_mut() {
+                span.text = format!("{} …", span.text).into();
             }
+        }
+    }
+
+    let lines: Vec<FmtLine> = line_spans
+        .into_iter()
+        .map(|spans| FmtLine {
+            spans: ModelRc::new(VecModel::from(spans)),
         })
         .collect();
     ModelRc::new(VecModel::from(lines))
@@ -297,11 +326,11 @@ pub fn assets_model(dir: &Path, assets: &[AssetInfo]) -> ModelRc<AssetItem> {
         .iter()
         .map(|a| AssetItem {
             filename: a.filename.clone().into(),
-            display_name: strip_disabled(&a.filename).into(),
+            display_name: display_pack_name(&a.filename).into(),
             size: human_size(a.size_bytes).into(),
             enabled: a.enabled,
             description: strip_mc_formatting(a.description.as_deref().unwrap_or_default()).into(),
-            desc_lines: parse_formatted(a.description.as_deref().unwrap_or_default()),
+            desc_lines: parse_formatted(a.description.as_deref().unwrap_or_default(), 2),
             icon: load_pack_icon(&dir.join(&a.filename)),
         })
         .collect();
@@ -354,7 +383,7 @@ pub fn mods_model(mods: &[InstanceMod]) -> ModelRc<ModItem> {
             name: m.metadata.name.clone().into(),
             version: m.metadata.version.clone().into(),
             description: strip_mc_formatting(m.metadata.description.as_deref().unwrap_or_default()).into(),
-            desc_lines: parse_formatted(m.metadata.description.as_deref().unwrap_or_default()),
+            desc_lines: parse_formatted(m.metadata.description.as_deref().unwrap_or_default(), 2),
             enabled: m.enabled,
         })
         .collect();
@@ -413,7 +442,7 @@ mod tests {
 
     #[test]
     fn test_parse_formatted_colors_and_lines() {
-        let model = parse_formatted("§6Gold§r white\nsecond §lbold");
+        let model = parse_formatted("§6Gold§r white\nsecond §lbold", 4);
         assert_eq!(model.row_count(), 2);
 
         // Line 1: "Gold" (gold) + " white" (default after reset).
@@ -434,10 +463,26 @@ mod tests {
 
     #[test]
     fn test_parse_formatted_plain() {
-        let model = parse_formatted("just text");
+        let model = parse_formatted("just text", 2);
         assert_eq!(model.row_count(), 1);
         let line = model.row_data(0).unwrap();
         assert_eq!(line.spans.row_count(), 1);
         assert_eq!(line.spans.row_data(0).unwrap().text.as_str(), "just text");
+    }
+
+    #[test]
+    fn test_parse_formatted_caps_lines_with_ellipsis() {
+        let model = parse_formatted("one\ntwo\nthree\nfour", 2);
+        assert_eq!(model.row_count(), 2);
+        // The last visible line gets an ellipsis to signal truncation.
+        let last = model.row_data(1).unwrap();
+        let span = last.spans.row_data(last.spans.row_count() - 1).unwrap();
+        assert_eq!(span.text.as_str(), "two …");
+
+        // No ellipsis when nothing was dropped.
+        let model = parse_formatted("one\ntwo", 2);
+        assert_eq!(model.row_count(), 2);
+        let last = model.row_data(1).unwrap();
+        assert_eq!(last.spans.row_data(0).unwrap().text.as_str(), "two");
     }
 }

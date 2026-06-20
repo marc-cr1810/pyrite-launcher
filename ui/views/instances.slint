@@ -77,9 +77,10 @@ component AssetSection inherits VerticalLayout {
         VerticalLayout {
             spacing: 6px;
             for a in root.model : Rectangle {
-                height: 60px;
+                height: 72px;
                 border-radius: Theme.radius-sm;
                 background: Theme.surface-alt;
+                clip: true;
                 HorizontalLayout {
                     padding: 10px;
                     spacing: 12px;
@@ -495,9 +496,10 @@ export component InstancesView inherits Rectangle {
                         VerticalLayout {
                             spacing: 6px;
                             for m in Logic.inst-mods : Rectangle {
-                                height: 60px;
+                                height: 72px;
                                 border-radius: Theme.radius-sm;
                                 background: Theme.surface-alt;
+                                clip: true;
                                 HorizontalLayout {
                                     padding: 10px;
                                     spacing: 10px;

@@ -225,12 +225,23 @@ fn list_assets_in_dir(dir_path: &Path) -> Result<Vec<AssetInfo>, String> {
 
     let mut assets = Vec::new();
     let entries = fs::read_dir(dir_path).map_err(|e| e.to_string())?;
-    let is_resourcepack = dir_path.file_name().and_then(|n| n.to_str()) == Some("resourcepacks");
+    let dir_name = dir_path.file_name().and_then(|n| n.to_str());
+    let is_resourcepack = dir_name == Some("resourcepacks");
+    let is_shaderpack = dir_name == Some("shaderpacks");
 
     for entry in entries.flatten() {
         let path = entry.path();
         let filename = entry.file_name().to_string_lossy().to_string();
-        
+
+        // Iris/OptiFine write per-pack shader settings as `<pack>.zip.txt`
+        // alongside the packs; these aren't packs themselves, so skip them.
+        if is_shaderpack {
+            let base = filename.strip_suffix(".disabled").unwrap_or(&filename);
+            if base.to_ascii_lowercase().ends_with(".txt") {
+                continue;
+            }
+        }
+
         let size_bytes = if path.is_file() {
             path.metadata().map(|m| m.len()).unwrap_or(0)
         } else {
@@ -482,6 +493,23 @@ mod tests {
         delete_screenshot(&inst_path, "shot.png").unwrap();
         let list = list_screenshots(&inst_path).unwrap();
         assert!(list.is_empty());
+
+        let _ = fs::remove_dir_all(&inst_path);
+    }
+
+    #[test]
+    fn test_shaderpacks_skip_settings_files() {
+        let (inst_path, _) = setup_temp_instance();
+        let packs_dir = inst_path.join("shaderpacks");
+        fs::create_dir_all(&packs_dir).unwrap();
+
+        fs::write(packs_dir.join("Complementary_r5.zip"), b"zip data").unwrap();
+        // Iris/OptiFine settings sidecar — must not be listed as a pack.
+        fs::write(packs_dir.join("Complementary_r5.zip.txt"), b"settings").unwrap();
+
+        let list = list_shaderpacks(&inst_path).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].filename, "Complementary_r5.zip");
 
         let _ = fs::remove_dir_all(&inst_path);
     }
