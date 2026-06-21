@@ -1,18 +1,25 @@
 import { Theme, Logic, ModrinthHit } from "../globals.slint";
 import { Card, PButton, Avatar, EmptyState, Dialog } from "../components.slint";
-import { ScrollView, LineEdit } from "std-widgets.slint";
+import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 
 // A single Modrinth result row: thumbnail, title/description/meta, action button.
-// Reused by the modpack browser here and the in-detail browse dialog.
+// Reused by the modpack browser here and the in-detail browse dialog. Clicking
+// the row body opens the detail; the action button is a quick install/create.
 export component ModrinthRow inherits Rectangle {
     in property <ModrinthHit> hit;
     in property <string> action-text: "Install";
     in property <bool> action-busy;
     callback action();
+    callback open-detail();
     height: 88px;
     border-radius: Theme.radius-sm;
-    background: Theme.surface-alt;
+    background: row-touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
+    animate background { duration: 100ms; }
     clip: true;
+    row-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open-detail(); }
+    }
     HorizontalLayout {
         padding: 12px;
         spacing: 12px;
@@ -53,58 +60,200 @@ export component ModrinthRow inherits Rectangle {
     }
 }
 
+// Full project detail: gallery, simplified body, metadata, links, version picker.
+// Reads the `Logic.modrinth-detail` global; the parent supplies the action label
+// and handles `back()` / `action(version-id)`.
+export component ModrinthDetailPane inherits VerticalLayout {
+    in property <string> action-text: "Install";
+    callback back();
+    callback action(string /* version-id */);
+    property <int> version-index: 0;
+    spacing: 12px;
+
+    HorizontalLayout {
+        PButton { text: "← Back"; clicked => { root.back(); } }
+        Rectangle { horizontal-stretch: 1; }
+    }
+
+    if Logic.modrinth-detail-loading : Text { text: "Loading…"; color: Theme.text-dim; font-size: 13px; }
+
+    if !Logic.modrinth-detail-loading : VerticalLayout {
+        spacing: 12px;
+        vertical-stretch: 1;
+
+        // Header
+        HorizontalLayout {
+            spacing: 14px;
+            Rectangle {
+                width: 72px; height: 72px; border-radius: Theme.radius-sm; background: Theme.surface; clip: true;
+                Text { width: 100%; height: 100%; text: "◈"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 30px; }
+                Image { width: 100%; height: 100%; source: Logic.modrinth-detail.icon; image-fit: contain; }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                horizontal-stretch: 1;
+                Text { text: Logic.modrinth-detail.title; color: Theme.text; font-size: 20px; font-weight: 800; overflow: elide; }
+                Text { text: "by " + Logic.modrinth-detail.author; color: Theme.text-muted; font-size: 13px; }
+                HorizontalLayout {
+                    spacing: 14px;
+                    alignment: start;
+                    Text { text: "⭳ " + Logic.modrinth-detail.downloads; color: Theme.text-dim; font-size: 12px; }
+                    if Logic.modrinth-detail.updated != "" : Text { text: "updated " + Logic.modrinth-detail.updated; color: Theme.text-dim; font-size: 12px; }
+                }
+                if Logic.modrinth-detail.categories != "" : Text { text: Logic.modrinth-detail.categories; color: Theme.text-dim; font-size: 11px; overflow: elide; }
+            }
+        }
+
+        Text { text: Logic.modrinth-detail.description; color: Theme.text-muted; font-size: 13px; wrap: word-wrap; }
+
+        // Gallery strip
+        if Logic.modrinth-detail.gallery.length > 0 : Rectangle {
+            height: 128px;
+            ScrollView {
+                viewport-height: 116px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    for img in Logic.modrinth-detail.gallery : Rectangle {
+                        width: 206px; height: 116px; border-radius: Theme.radius-sm; background: Theme.surface; clip: true;
+                        Image { width: 100%; height: 100%; source: img; image-fit: contain; }
+                    }
+                }
+            }
+        }
+
+        // Body
+        if Logic.modrinth-detail.body != "" : Card {
+            vertical-stretch: 1;
+            ScrollView {
+                VerticalLayout {
+                    padding: 6px;
+                    Text { text: Logic.modrinth-detail.body; color: Theme.text-muted; font-size: 12px; wrap: word-wrap; }
+                }
+            }
+        }
+        if Logic.modrinth-detail.body == "" : Rectangle { vertical-stretch: 1; }
+
+        // Links
+        HorizontalLayout {
+            spacing: 8px;
+            if Logic.modrinth-detail.page-url != "" : PButton { text: "Modrinth ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.page-url); } }
+            if Logic.modrinth-detail.source-url != "" : PButton { text: "Source ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.source-url); } }
+            if Logic.modrinth-detail.issues-url != "" : PButton { text: "Issues ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.issues-url); } }
+            if Logic.modrinth-detail.wiki-url != "" : PButton { text: "Wiki ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.wiki-url); } }
+            if Logic.modrinth-detail.discord-url != "" : PButton { text: "Discord ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.discord-url); } }
+            Rectangle { horizontal-stretch: 1; }
+        }
+
+        // Version picker + primary action
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                Text { text: "Version"; color: Theme.text-muted; font-size: 12px; }
+                ComboBox {
+                    model: Logic.modrinth-detail.version-labels;
+                    current-index <=> root.version-index;
+                    enabled: Logic.modrinth-detail.version-labels.length > 0;
+                }
+            }
+            VerticalLayout {
+                alignment: end;
+                PButton {
+                    text: root.action-text;
+                    primary: true;
+                    enabled: Logic.modrinth-detail.version-ids.length > 0;
+                    clicked => { root.action(Logic.modrinth-detail.version-ids[root.version-index]); }
+                }
+            }
+        }
+    }
+}
+
 export component ModrinthView inherits Rectangle {
     property <bool> create-open: false;
     property <ModrinthHit> pending-pack;
+    property <ModrinthHit> detail-hit;   // the row whose detail is open
     property <string> create-name;
+    property <string> pending-version-id; // "" = latest, else a chosen version
     // Empty image, used as the "no photo" fallback for the icon preview.
     property <image> no-image;
 
     // Show popular modpacks on first open.
     init => { Logic.modrinth-search("", "modpack", ""); }
 
+    // Open the create-from-pack dialog for a pack at a specific version ("" = latest).
+    function open-create(pack: ModrinthHit, version-id: string) {
+        root.pending-pack = pack;
+        root.create-name = pack.title;
+        root.pending-version-id = version-id;
+        Logic.pending-icon-id = "modpack";
+        Logic.pending-icon-glyph = "";
+        Logic.reset-pending-icon-file();
+        root.create-open = true;
+    }
+
     VerticalLayout {
         padding: 24px;
         spacing: 14px;
 
-        HorizontalLayout {
-            spacing: 8px;
-            search := LineEdit {
-                horizontal-stretch: 1;
-                placeholder-text: "Search modpacks…";
-                accepted => { Logic.modrinth-search(self.text, "modpack", ""); }
+        if Logic.modrinth-detail-open : ModrinthDetailPane {
+            vertical-stretch: 1;
+            action-text: "Create instance…";
+            back => { Logic.modrinth-close-detail(); }
+            action(vid) => { root.open-create(root.detail-hit, vid); }
+        }
+
+        if !Logic.modrinth-detail-open : VerticalLayout {
+            spacing: 14px;
+            vertical-stretch: 1;
+
+            HorizontalLayout {
+                spacing: 8px;
+                search := LineEdit {
+                    horizontal-stretch: 1;
+                    placeholder-text: "Search modpacks…";
+                    accepted => { Logic.modrinth-search(self.text, "modpack", ""); }
+                }
+                PButton { text: "Search"; primary: true; clicked => { Logic.modrinth-search(search.text, "modpack", ""); } }
             }
-            PButton { text: "Search"; primary: true; clicked => { Logic.modrinth-search(search.text, "modpack", ""); } }
-        }
 
-        if Logic.modrinth-loading : Text { text: "Searching…"; color: Theme.text-dim; font-size: 12px; }
-        if !Logic.modrinth-loading && Logic.modrinth-status != "" : Text {
-            text: Logic.modrinth-status; color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
-        }
+            if Logic.modrinth-loading : Text { text: "Searching…"; color: Theme.text-dim; font-size: 12px; }
+            if !Logic.modrinth-loading && Logic.modrinth-status != "" : Text {
+                text: Logic.modrinth-status; color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
+            }
 
-        if Logic.modrinth-results.length == 0 && !Logic.modrinth-loading : EmptyState {
-            vertical-stretch: 1;
-            icon: "◈";
-            title: "Browse Modrinth modpacks";
-            subtitle: "Search for a modpack and create a configurable instance from it.";
-        }
+            if Logic.modrinth-results.length == 0 && !Logic.modrinth-loading : EmptyState {
+                vertical-stretch: 1;
+                icon: "◈";
+                title: "Browse Modrinth modpacks";
+                subtitle: "Search for a modpack and create a configurable instance from it.";
+            }
 
-        if Logic.modrinth-results.length > 0 : Card {
-            vertical-stretch: 1;
-            ScrollView {
-                VerticalLayout {
-                    padding: 8px;
-                    spacing: 8px;
-                    for hit in Logic.modrinth-results : ModrinthRow {
-                        hit: hit;
-                        action-text: "Create instance…";
-                        action => {
-                            root.pending-pack = hit;
-                            root.create-name = hit.title;
-                            Logic.pending-icon-id = "modpack";
-                            Logic.pending-icon-glyph = "";
-                            Logic.reset-pending-icon-file();
-                            root.create-open = true;
+            if Logic.modrinth-results.length > 0 : Card {
+                vertical-stretch: 1;
+                ScrollView {
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 8px;
+                        for hit in Logic.modrinth-results : ModrinthRow {
+                            hit: hit;
+                            action-text: "Create instance…";
+                            action => { root.open-create(hit, ""); }
+                            open-detail => {
+                                root.detail-hit = hit;
+                                Logic.modrinth-open-detail(hit.project-id, "modpack");
+                            }
+                        }
+                        if Logic.modrinth-can-load-more : HorizontalLayout {
+                            padding-top: 4px;
+                            alignment: center;
+                            PButton {
+                                text: Logic.modrinth-loading-more ? "Loading…" : "Load more";
+                                enabled: !Logic.modrinth-loading-more;
+                                clicked => { Logic.modrinth-load-more(); }
+                            }
                         }
                     }
                 }
@@ -206,7 +355,8 @@ export component ModrinthView inherits Rectangle {
                         root.create-name,
                         Logic.pending-icon-id,
                         mem.text,
-                        jvm.text);
+                        jvm.text,
+                        root.pending-version-id);
                     root.create-open = false;
                 }
             }

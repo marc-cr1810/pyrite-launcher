@@ -1,6 +1,6 @@
 import { Theme, Logic, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
 import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
-import { ModrinthRow } from "modrinth.slint";
+import { ModrinthRow, ModrinthDetailPane } from "modrinth.slint";
 import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 
 // One tab in the detail-pane tab bar, with an underline accent when active.
@@ -217,6 +217,7 @@ export component InstancesView inherits Rectangle {
         root.browse-kind = kind;
         root.browse-title = title;
         root.browse-open = true;
+        Logic.modrinth-close-detail();
         Logic.modrinth-search("", kind, root.selected-id);
     }
 
@@ -810,37 +811,59 @@ export component InstancesView inherits Rectangle {
     // ---- Modrinth browse dialog (mods / resource packs / shaders) ----
     if root.browse-open : Dialog {
         dialog-width: 660px;
-        closed => { root.browse-open = false; }
-        Text { text: "Browse " + root.browse-title; color: Theme.text; font-size: 18px; font-weight: 700; }
-        HorizontalLayout {
-            spacing: 8px;
-            bsearch := LineEdit {
-                horizontal-stretch: 1;
-                placeholder-text: "Search Modrinth…";
-                accepted => { Logic.modrinth-search(self.text, root.browse-kind, root.selected-id); }
+        closed => { root.browse-open = false; Logic.modrinth-close-detail(); }
+
+        // Inline detail view (swaps in over the results list).
+        if Logic.modrinth-detail-open : ModrinthDetailPane {
+            height: 540px;
+            action-text: "Install";
+            back => { Logic.modrinth-close-detail(); }
+            action(vid) => { Logic.modrinth-install(root.selected-id, Logic.modrinth-detail.project-id, root.browse-kind, vid); }
+        }
+
+        if !Logic.modrinth-detail-open : VerticalLayout {
+            spacing: 12px;
+            Text { text: "Browse " + root.browse-title; color: Theme.text; font-size: 18px; font-weight: 700; }
+            HorizontalLayout {
+                spacing: 8px;
+                bsearch := LineEdit {
+                    horizontal-stretch: 1;
+                    placeholder-text: "Search Modrinth…";
+                    accepted => { Logic.modrinth-search(self.text, root.browse-kind, root.selected-id); }
+                }
+                PButton { text: "Search"; primary: true; clicked => { Logic.modrinth-search(bsearch.text, root.browse-kind, root.selected-id); } }
             }
-            PButton { text: "Search"; primary: true; clicked => { Logic.modrinth-search(bsearch.text, root.browse-kind, root.selected-id); } }
-        }
-        if Logic.modrinth-loading : Text { text: "Searching…"; color: Theme.text-dim; font-size: 12px; }
-        if !Logic.modrinth-loading && Logic.modrinth-status != "" : Text {
-            text: Logic.modrinth-status; color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
-        }
-        Rectangle {
-            height: 360px;
-            ScrollView {
-                VerticalLayout {
-                    spacing: 8px;
-                    for hit in Logic.modrinth-results : ModrinthRow {
-                        hit: hit;
-                        action-text: "Install";
-                        action => { Logic.modrinth-install(root.selected-id, hit.project-id, root.browse-kind); }
+            if Logic.modrinth-loading : Text { text: "Searching…"; color: Theme.text-dim; font-size: 12px; }
+            if !Logic.modrinth-loading && Logic.modrinth-status != "" : Text {
+                text: Logic.modrinth-status; color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
+            }
+            Rectangle {
+                height: 360px;
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 8px;
+                        for hit in Logic.modrinth-results : ModrinthRow {
+                            hit: hit;
+                            action-text: "Install";
+                            action => { Logic.modrinth-install(root.selected-id, hit.project-id, root.browse-kind, ""); }
+                            open-detail => { Logic.modrinth-open-detail(hit.project-id, root.browse-kind); }
+                        }
+                        if Logic.modrinth-can-load-more : HorizontalLayout {
+                            padding-top: 4px;
+                            alignment: center;
+                            PButton {
+                                text: Logic.modrinth-loading-more ? "Loading…" : "Load more";
+                                enabled: !Logic.modrinth-loading-more;
+                                clicked => { Logic.modrinth-load-more(); }
+                            }
+                        }
                     }
                 }
             }
-        }
-        HorizontalLayout {
-            alignment: end;
-            PButton { text: "Close"; clicked => { root.browse-open = false; } }
+            HorizontalLayout {
+                alignment: end;
+                PButton { text: "Close"; clicked => { root.browse-open = false; Logic.modrinth-close-detail(); } }
+            }
         }
     }
 

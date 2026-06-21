@@ -116,6 +116,29 @@ export struct ModrinthHit {
     icon: image,         // decoded thumbnail, empty until fetched
 }
 
+// Full project detail (gallery, body, versions, links) shown after clicking a hit.
+export struct ModrinthDetail {
+    project-id: string,
+    kind: string,        // mod / modpack / resourcepack / shader
+    title: string,
+    author: string,
+    description: string, // short summary
+    body: string,        // simplified plain-text of the Markdown body
+    icon: image,
+    downloads: string,
+    updated: string,     // human-relative ("3 days ago")
+    categories: string,  // comma-joined
+    source-url: string,
+    issues-url: string,
+    wiki-url: string,
+    discord-url: string,
+    page-url: string,    // modrinth.com project page
+    gallery: [image],    // decoded gallery images, fill in as they arrive
+    // Parallel arrays: picker labels and the version ids they map to.
+    version-labels: [string],
+    version-ids: [string],
+}
+
 export struct JavaRuntimeItem {
     major: int,
     name: string,
@@ -237,14 +260,24 @@ export global Logic {
     in property <[ModrinthHit]> modrinth-results;
     in property <bool> modrinth-loading;
     in property <string> modrinth-status;     // inline status / error / empty messaging
+    in property <bool> modrinth-can-load-more; // more results available beyond what's shown
+    in property <bool> modrinth-loading-more;  // a "load more" page is in flight
+    callback modrinth-load-more();
     // kind: "modpack" | "mod" | "resourcepack" | "shader". instance-id is "" for
     // modpacks (no version/loader filter); otherwise the search is scoped to it.
     callback modrinth-search(string /* query */, string /* kind */, string /* instance-id */);
-    // Install a browsed mod/pack into an existing instance.
-    callback modrinth-install(string /* instance-id */, string /* project-id */, string /* kind */);
+    // Install a browsed mod/pack into an existing instance. version-id "" = latest compatible.
+    callback modrinth-install(string /* instance-id */, string /* project-id */, string /* kind */, string /* version-id */);
     // Create a new instance from a modpack: project-id, chosen name, icon-id
-    // ("" / builtin id / "custom" / "modpack" for the pack's own icon), memory-mb, jvm-args.
-    callback modrinth-create-instance(string, string, string, string, string);
+    // ("" / builtin id / "custom" / "modpack" for the pack's own icon), memory-mb,
+    // jvm-args, version-id ("" = latest).
+    callback modrinth-create-instance(string, string, string, string, string, string);
+    // Project detail view (gallery, body, versions, links).
+    in property <ModrinthDetail> modrinth-detail;
+    in property <bool> modrinth-detail-loading;
+    in property <bool> modrinth-detail-open;
+    callback modrinth-open-detail(string /* project-id */, string /* kind */);
+    callback modrinth-close-detail();
     // Import a local .mrpack file as a new instance (opens a native file picker).
     callback import-mrpack();
     // Export an existing instance to a .mrpack (opens a native save dialog).

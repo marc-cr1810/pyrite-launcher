@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 
 use crate::app::avatars::AvatarEntry;
+use crate::app::convert::ModrinthDetailData;
 use crate::app::theme::ThemeStore;
 use crate::core::api::ModrinthSearchHit;
 use crate::core::config::Config;
@@ -45,6 +46,24 @@ pub struct AppState {
     /// Decoded Modrinth project icons, keyed by project id. Populated lazily by
     /// background fetches, mirroring `avatar_cache`.
     pub modrinth_icon_cache: Arc<Mutex<HashMap<String, AvatarEntry>>>,
+    /// The currently-open Modrinth project detail (project + versions + author),
+    /// kept so the detail model can be rebuilt on the UI thread as gallery images
+    /// arrive. `None` when no detail is open.
+    pub modrinth_detail: Arc<Mutex<Option<ModrinthDetailData>>>,
+    /// Decoded detail icon + gallery images, keyed by image url.
+    pub modrinth_gallery_cache: Arc<Mutex<HashMap<String, AvatarEntry>>>,
+    /// The active Modrinth search (query/kind/scope + total hit count), so
+    /// "load more" can fetch the next page and append to `modrinth_results`.
+    pub modrinth_search: Arc<Mutex<ModrinthSearchCtx>>,
+}
+
+/// Parameters of the in-progress Modrinth search, for pagination.
+#[derive(Default, Clone)]
+pub struct ModrinthSearchCtx {
+    pub query: String,
+    pub kind: String,
+    pub instance_id: String,
+    pub total: usize,
 }
 
 impl AppState {

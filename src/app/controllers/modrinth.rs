@@ -19,6 +19,9 @@ use crate::core::downloader::ProgressUpdate;
 use crate::core::instance::Instance;
 use crate::{Logic, MainWindow};
 
+/// Results fetched per search page.
+const PAGE: usize = 20;
+
 /// Map a UI "kind" to a Modrinth `project_type` facet value.
 fn project_type_for(kind: &str) -> &'static str {
     match kind {
@@ -45,44 +48,89 @@ pub fn search(
         set_loading(&weak, true);
         set_status(&weak, "");
 
-        let game_dir = state.game_dir();
-        let (game_version, loader) = if instance_id.is_empty() {
-            (None, None)
-        } else {
-            let path = game_dir.join("instances").join(&instance_id);
-            match Instance::load(&instance_id, path) {
-                Ok(inst) => {
-                    let (gv, ld) = inst.get_game_version_and_loader(&game_dir);
-                    (Some(gv), ld)
-                }
-                Err(_) => (None, None),
-            }
-        };
-
+        let (game_version, loader) = resolve_scope(&state, &instance_id).await;
         let api = ApiClient::new();
         let project_type = project_type_for(&kind);
         let result = api
-            .search_projects(&query, game_version.as_deref(), loader.as_deref(), project_type)
+            .search_projects(&query, game_version.as_deref(), loader.as_deref(), project_type, 0, PAGE)
             .await;
 
         match result {
-            Ok(hits) => {
-                let empty = hits.is_empty();
-                *state.modrinth_results.lock().unwrap() = hits.clone();
+            Ok(resp) => {
+                let empty = resp.hits.is_empty();
+                *state.modrinth_search.lock().unwrap() = crate::app::state::ModrinthSearchCtx {
+                    query,
+                    kind,
+                    instance_id,
+                    total: resp.total_hits,
+                };
+                *state.modrinth_results.lock().unwrap() = resp.hits.clone();
                 push_results(&state, &weak);
+                update_can_load_more(&state, &weak);
                 if empty {
                     set_status(&weak, "No results found.");
                 }
-                ensure_icons(&state, &weak, hits);
+                ensure_icons(&state, &weak, resp.hits);
             }
             Err(e) => {
                 state.modrinth_results.lock().unwrap().clear();
+                state.modrinth_search.lock().unwrap().total = 0;
                 push_results(&state, &weak);
+                update_can_load_more(&state, &weak);
                 set_status(&weak, format!("Search failed: {e}"));
             }
         }
         set_loading(&weak, false);
     });
+}
+
+/// Fetch the next page of the current search and append it to the results.
+pub fn load_more(state: &AppState, weak: &Weak<MainWindow>) {
+    let state = state.clone();
+    let weak = weak.clone();
+    state.rt.clone().spawn(async move {
+        let ctx = state.modrinth_search.lock().unwrap().clone();
+        let offset = state.modrinth_results.lock().unwrap().len();
+        if offset >= ctx.total {
+            return;
+        }
+        set_loading_more(&weak, true);
+
+        let (game_version, loader) = resolve_scope(&state, &ctx.instance_id).await;
+        let api = ApiClient::new();
+        let project_type = project_type_for(&ctx.kind);
+        match api
+            .search_projects(&ctx.query, game_version.as_deref(), loader.as_deref(), project_type, offset, PAGE)
+            .await
+        {
+            Ok(resp) => {
+                state.modrinth_results.lock().unwrap().extend(resp.hits.clone());
+                state.modrinth_search.lock().unwrap().total = resp.total_hits;
+                push_results(&state, &weak);
+                update_can_load_more(&state, &weak);
+                ensure_icons(&state, &weak, resp.hits);
+            }
+            Err(e) => set_status(&weak, format!("Failed to load more: {e}")),
+        }
+        set_loading_more(&weak, false);
+    });
+}
+
+/// Resolve an instance's (game_version, loader) for scoping a search; both `None`
+/// when `instance_id` is empty (e.g. modpack search).
+async fn resolve_scope(state: &AppState, instance_id: &str) -> (Option<String>, Option<String>) {
+    if instance_id.is_empty() {
+        return (None, None);
+    }
+    let game_dir = state.game_dir();
+    let path = game_dir.join("instances").join(instance_id);
+    match Instance::load(instance_id, path) {
+        Ok(inst) => {
+            let (gv, ld) = inst.get_game_version_and_loader(&game_dir);
+            (Some(gv), ld)
+        }
+        Err(_) => (None, None),
+    }
 }
 
 /// Install a browsed mod / resource pack / shader into an existing instance,
@@ -93,6 +141,7 @@ pub fn install(
     instance_id: String,
     project_id: String,
     kind: String,
+    version_id: String,
 ) {
     let state = state.clone();
     let weak = weak.clone();
@@ -118,16 +167,21 @@ pub fn install(
             }
         };
 
-        // Newest version compatible with this instance's MC version (and loader,
+        // An explicit version-id (from the detail picker) wins; otherwise pick the
+        // newest version compatible with this instance's MC version (and loader,
         // for mods). Resource packs / shaders only need a matching game version.
-        let chosen = versions.into_iter().find(|v| {
-            let mc_ok = v.game_versions.contains(&game_version);
-            let loader_ok = kind != "mod"
-                || loader
-                    .as_ref()
-                    .map_or(true, |l| v.loaders.iter().any(|x| x.eq_ignore_ascii_case(l)));
-            mc_ok && loader_ok
-        });
+        let chosen = if !version_id.is_empty() {
+            versions.into_iter().find(|v| v.id == version_id)
+        } else {
+            versions.into_iter().find(|v| {
+                let mc_ok = v.game_versions.contains(&game_version);
+                let loader_ok = kind != "mod"
+                    || loader
+                        .as_ref()
+                        .map_or(true, |l| v.loaders.iter().any(|x| x.eq_ignore_ascii_case(l)));
+                mc_ok && loader_ok
+            })
+        };
         let version = match chosen {
             Some(v) => v,
             None => {
@@ -178,6 +232,7 @@ pub fn create_instance(
     icon_id: String,
     memory: String,
     jvm_args: String,
+    version_id: String,
 ) {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -204,9 +259,15 @@ pub fn create_instance(
             Ok(v) => v,
             Err(e) => return fail(&weak, format!("Failed: {e}")),
         };
-        let version = match versions.into_iter().next() {
+        // An explicit version-id (from the detail picker) wins; otherwise latest.
+        let chosen = if version_id.is_empty() {
+            versions.into_iter().next()
+        } else {
+            versions.into_iter().find(|v| v.id == version_id)
+        };
+        let version = match chosen {
             Some(v) => v,
-            None => return fail(&weak, "This modpack has no published versions."),
+            None => return fail(&weak, "This modpack has no matching version."),
         };
         let file = match version.files.iter().find(|f| f.primary).or_else(|| version.files.first()) {
             Some(f) => f.clone(),
@@ -352,7 +413,112 @@ pub fn export_file(state: &AppState, weak: &Weak<MainWindow>, id: String) {
     });
 }
 
+/// Load a project's full detail (description body, gallery, version list) and
+/// show the detail view. Author/icon come from the cached search hit.
+pub fn open_detail(state: &AppState, weak: &Weak<MainWindow>, project_id: String, kind: String) {
+    let _ = weak.upgrade_in_event_loop(|ui| {
+        let logic = ui.global::<Logic>();
+        logic.set_modrinth_detail_open(true);
+        logic.set_modrinth_detail_loading(true);
+    });
+
+    let state = state.clone();
+    let weak = weak.clone();
+    state.rt.clone().spawn(async move {
+        let author = state
+            .modrinth_results
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|h| h.project_id == project_id)
+            .map(|h| h.author.clone())
+            .unwrap_or_default();
+
+        let api = ApiClient::new();
+        let (proj, vers) = tokio::join!(
+            api.fetch_project(&project_id),
+            api.fetch_modpack_versions(&project_id)
+        );
+        let project = match proj {
+            Ok(p) => p,
+            Err(e) => {
+                set_status(&weak, format!("Failed to load project: {e}"));
+                set_detail_loading(&weak, false);
+                return;
+            }
+        };
+        let versions = vers.unwrap_or_default();
+
+        // Icon + gallery image urls to fetch lazily.
+        let gallery_urls: Vec<String> = project
+            .gallery
+            .iter()
+            .map(|g| g.url.clone())
+            .chain(project.icon_url.clone())
+            .collect();
+
+        *state.modrinth_detail.lock().unwrap() = Some(convert::ModrinthDetailData {
+            project,
+            versions,
+            author,
+            kind,
+        });
+        push_detail(&state, &weak);
+        ensure_gallery(&state, &weak, gallery_urls);
+        set_detail_loading(&weak, false);
+    });
+}
+
+pub fn close_detail(weak: &Weak<MainWindow>) {
+    let _ = weak.upgrade_in_event_loop(|ui| ui.global::<Logic>().set_modrinth_detail_open(false));
+}
+
 // --- Internal helpers ---
+
+/// Rebuild the detail model from the cached `ModrinthDetailData` on the UI
+/// thread, picking up any gallery images decoded since the last build.
+fn push_detail(state: &AppState, weak: &Weak<MainWindow>) {
+    let state = state.clone();
+    let _ = weak.upgrade_in_event_loop(move |ui| {
+        if let Some(data) = state.modrinth_detail.lock().unwrap().as_ref() {
+            ui.global::<Logic>()
+                .set_modrinth_detail(convert::modrinth_detail_model(data, &state));
+        }
+    });
+}
+
+/// Best-effort fetch of detail icon + gallery images (keyed by url); rebuild the
+/// detail model as each arrives. Mirrors `ensure_icons`.
+fn ensure_gallery(state: &AppState, weak: &Weak<MainWindow>, urls: Vec<String>) {
+    let mut to_fetch = Vec::new();
+    {
+        let mut cache = state.modrinth_gallery_cache.lock().unwrap();
+        for url in urls {
+            if url.is_empty() || cache.contains_key(&url) {
+                continue;
+            }
+            cache.insert(url.clone(), AvatarEntry::Pending);
+            to_fetch.push(url);
+        }
+    }
+    for url in to_fetch {
+        let state = state.clone();
+        let weak = weak.clone();
+        state.rt.clone().spawn(async move {
+            let entry = match fetch_icon(&url).await {
+                Some((rgba, width, height)) => AvatarEntry::Ready { rgba, width, height },
+                None => AvatarEntry::Failed,
+            };
+            state.modrinth_gallery_cache.lock().unwrap().insert(url, entry);
+            push_detail(&state, &weak);
+        });
+    }
+}
+
+fn set_detail_loading(weak: &Weak<MainWindow>, loading: bool) {
+    let _ = weak
+        .upgrade_in_event_loop(move |ui| ui.global::<Logic>().set_modrinth_detail_loading(loading));
+}
 
 /// Rebuild the Slint results model from the cached hits on the UI thread,
 /// picking up any icons decoded since the last build.
@@ -441,6 +607,17 @@ fn refresh_all(state: &AppState, weak: &Weak<MainWindow>) {
 
 fn set_loading(weak: &Weak<MainWindow>, loading: bool) {
     let _ = weak.upgrade_in_event_loop(move |ui| ui.global::<Logic>().set_modrinth_loading(loading));
+}
+
+fn set_loading_more(weak: &Weak<MainWindow>, loading: bool) {
+    let _ = weak.upgrade_in_event_loop(move |ui| ui.global::<Logic>().set_modrinth_loading_more(loading));
+}
+
+/// Update the "load more" affordance: shown while fewer results are loaded than
+/// the search's reported total.
+fn update_can_load_more(state: &AppState, weak: &Weak<MainWindow>) {
+    let can = state.modrinth_results.lock().unwrap().len() < state.modrinth_search.lock().unwrap().total;
+    let _ = weak.upgrade_in_event_loop(move |ui| ui.global::<Logic>().set_modrinth_can_load_more(can));
 }
 
 fn set_busy(weak: &Weak<MainWindow>, busy: bool) {

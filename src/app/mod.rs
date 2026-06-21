@@ -61,6 +61,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         pending_icon_path: Arc::new(Mutex::new(None)),
         modrinth_results: Arc::new(Mutex::new(Vec::new())),
         modrinth_icon_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        modrinth_detail: Arc::new(Mutex::new(None)),
+        modrinth_gallery_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        modrinth_search: Arc::new(Mutex::new(Default::default())),
     };
 
     let window = MainWindow::new()?;

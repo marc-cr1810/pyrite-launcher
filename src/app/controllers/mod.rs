@@ -249,14 +249,21 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     {
         let st = state.clone();
         let weak = ui.as_weak();
-        logic.on_modrinth_install(move |id, project_id, kind| {
-            modrinth::install(&st, &weak, id.to_string(), project_id.to_string(), kind.to_string());
+        logic.on_modrinth_install(move |id, project_id, kind, version_id| {
+            modrinth::install(
+                &st,
+                &weak,
+                id.to_string(),
+                project_id.to_string(),
+                kind.to_string(),
+                version_id.to_string(),
+            );
         });
     }
     {
         let st = state.clone();
         let weak = ui.as_weak();
-        logic.on_modrinth_create_instance(move |project_id, name, icon_id, memory, jvm_args| {
+        logic.on_modrinth_create_instance(move |project_id, name, icon_id, memory, jvm_args, version_id| {
             modrinth::create_instance(
                 &st,
                 &weak,
@@ -265,8 +272,25 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
                 icon_id.to_string(),
                 memory.to_string(),
                 jvm_args.to_string(),
+                version_id.to_string(),
             );
         });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_modrinth_open_detail(move |project_id, kind| {
+            modrinth::open_detail(&st, &weak, project_id.to_string(), kind.to_string());
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        logic.on_modrinth_close_detail(move || modrinth::close_detail(&weak));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_modrinth_load_more(move || modrinth::load_more(&st, &weak));
     }
     {
         let st = state.clone();

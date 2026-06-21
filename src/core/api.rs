@@ -703,9 +703,11 @@ impl ApiClient {
         game_version: Option<&str>,
         loader: Option<&str>,
         project_type: &str,
-    ) -> Result<Vec<ModrinthSearchHit>, String> {
+        offset: usize,
+        limit: usize,
+    ) -> Result<ModrinthSearchResponse, String> {
         let url = "https://api.modrinth.com/v2/search";
-        
+
         let mut facets = vec![vec![format!("project_type:{}", project_type)]];
         if let Some(v) = game_version {
             facets.push(vec![format!("versions:{}", v)]);
@@ -717,16 +719,22 @@ impl ApiClient {
         }
 
         let facets_json = serde_json::to_string(&facets).map_err(|e| e.to_string())?;
+        let offset_s = offset.to_string();
+        let limit_s = limit.to_string();
 
         self.client.get(url)
-            .query(&[("query", query), ("facets", &facets_json)])
+            .query(&[
+                ("query", query),
+                ("facets", facets_json.as_str()),
+                ("offset", offset_s.as_str()),
+                ("limit", limit_s.as_str()),
+            ])
             .header("User-Agent", "pyrite-launcher/0.1.0")
             .send()
             .await
             .map_err(|e| format!("Failed to search Modrinth: {}", e))?
             .json::<ModrinthSearchResponse>()
             .await
-            .map(|r| r.hits)
             .map_err(|e| format!("Failed to parse Modrinth search response: {}", e))
     }
 
@@ -736,7 +744,9 @@ impl ApiClient {
         game_version: Option<&str>,
         loader: Option<&str>,
     ) -> Result<Vec<ModrinthSearchHit>, String> {
-        self.search_projects(query, game_version, loader, "mod").await
+        self.search_projects(query, game_version, loader, "mod", 0, 20)
+            .await
+            .map(|r| r.hits)
     }
 
     pub async fn fetch_project(&self, project_id: &str) -> Result<ModrinthProject, String> {
@@ -804,6 +814,8 @@ pub struct ModrinthSearchHit {
 #[derive(Deserialize, Debug, Clone)]
 pub struct ModrinthSearchResponse {
     pub hits: Vec<ModrinthSearchHit>,
+    #[serde(default)]
+    pub total_hits: usize,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -849,6 +861,39 @@ pub struct ModrinthProject {
     pub slug: String,
     pub title: String,
     pub description: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default)]
+    pub icon_url: Option<String>,
+    #[serde(default)]
+    pub updated: Option<String>,
+    #[serde(default)]
+    pub source_url: Option<String>,
+    #[serde(default)]
+    pub issues_url: Option<String>,
+    #[serde(default)]
+    pub wiki_url: Option<String>,
+    #[serde(default)]
+    pub discord_url: Option<String>,
+    #[serde(default)]
+    pub gallery: Vec<ModrinthGalleryImage>,
+    #[serde(default)]
+    pub project_type: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ModrinthGalleryImage {
+    pub url: String,
+    #[serde(default)]
+    pub featured: bool,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 #[cfg(test)]

@@ -10,13 +10,13 @@ use crate::app::avatars;
 use crate::app::avatars::AvatarEntry;
 use crate::app::icons;
 use crate::app::state::AppState;
-use crate::core::api::ModrinthSearchHit;
+use crate::core::api::{ModrinthProject, ModrinthSearchHit, ModrinthVersion};
 use crate::core::assets::{AssetInfo, ScreenshotInfo, WorldInfo};
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::{Instance, InstanceMod};
 use crate::{
     AccountItem, AssetItem, BackupItem, FmtLine, FmtSpan, InstanceItem, JavaRuntimeItem, LogLine, ModItem,
-    ModrinthHit, ScreenshotItem, WorldItem,
+    ModrinthDetail, ModrinthHit, ScreenshotItem, WorldItem,
 };
 
 /// Glyph to render in place of the monogram for a built-in instance icon.
@@ -589,6 +589,207 @@ pub fn modrinth_results_model(hits: &[ModrinthSearchHit], state: &AppState) -> M
         })
         .collect();
     ModelRc::new(VecModel::from(items))
+}
+
+/// The data backing an open project-detail view, cached in `AppState` so the
+/// Slint model can be rebuilt as gallery images decode.
+#[derive(Clone)]
+pub struct ModrinthDetailData {
+    pub project: ModrinthProject,
+    pub versions: Vec<ModrinthVersion>,
+    pub author: String,
+    pub kind: String,
+}
+
+/// Build a `slint::Image` for a cached detail icon / gallery image (keyed by url).
+/// Must be called on the UI thread.
+pub fn modrinth_gallery_image(state: &AppState, url: &str) -> Image {
+    if url.is_empty() {
+        return Image::default();
+    }
+    let cache = state.modrinth_gallery_cache.lock().unwrap();
+    if let Some(AvatarEntry::Ready { rgba, width, height }) = cache.get(url) {
+        let mut buf = SharedPixelBuffer::<Rgba8Pixel>::new(*width, *height);
+        buf.make_mut_bytes().copy_from_slice(rgba);
+        Image::from_rgba8(buf)
+    } else {
+        Image::default()
+    }
+}
+
+pub fn modrinth_detail_model(data: &ModrinthDetailData, state: &AppState) -> ModrinthDetail {
+    let p = &data.project;
+    let icon_url = p.icon_url.clone().unwrap_or_default();
+
+    let gallery: Vec<Image> = p
+        .gallery
+        .iter()
+        .map(|g| modrinth_gallery_image(state, &g.url))
+        .collect();
+
+    let version_labels: Vec<SharedString> = data
+        .versions
+        .iter()
+        .map(|v| {
+            let game = v.game_versions.first().cloned().unwrap_or_default();
+            let loaders = v.loaders.join("/");
+            if loaders.is_empty() {
+                format!("{} — {}", v.version_number, game).into()
+            } else {
+                format!("{} — {} · {}", v.version_number, game, loaders).into()
+            }
+        })
+        .collect();
+    let version_ids: Vec<SharedString> = data.versions.iter().map(|v| v.id.clone().into()).collect();
+
+    let url_type = p.project_type.clone().unwrap_or_else(|| data.kind.clone());
+    let page_url = format!("https://modrinth.com/{}/{}", url_type, p.slug);
+    let updated = p.updated.as_deref().map(human_relative_time).unwrap_or_default();
+
+    ModrinthDetail {
+        project_id: p.id.clone().into(),
+        kind: data.kind.clone().into(),
+        title: p.title.clone().into(),
+        author: data.author.clone().into(),
+        description: p.description.clone().into(),
+        body: markdown_to_text(&p.body).into(),
+        icon: modrinth_gallery_image(state, &icon_url),
+        downloads: format!("{} downloads", human_count(p.downloads)).into(),
+        updated: updated.into(),
+        categories: p.categories.join(", ").into(),
+        source_url: p.source_url.clone().unwrap_or_default().into(),
+        issues_url: p.issues_url.clone().unwrap_or_default().into(),
+        wiki_url: p.wiki_url.clone().unwrap_or_default().into(),
+        discord_url: p.discord_url.clone().unwrap_or_default().into(),
+        page_url: page_url.into(),
+        gallery: ModelRc::new(VecModel::from(gallery)),
+        version_labels: ModelRc::new(VecModel::from(version_labels)),
+        version_ids: ModelRc::new(VecModel::from(version_ids)),
+    }
+}
+
+/// Convert a Markdown body to a simplified plain-text rendering: drop images,
+/// flatten links to their text, strip heading/quote/list markers and emphasis.
+/// Not a full Markdown renderer — just readable preview text.
+pub fn markdown_to_text(body: &str) -> String {
+    let mut out_lines: Vec<String> = Vec::new();
+    for raw in body.replace("\r\n", "\n").lines() {
+        let mut line = raw.trim_end().to_string();
+
+        // Leading block markers.
+        let trimmed = line.trim_start();
+        let lead_ws = &line[..line.len() - trimmed.len()];
+        let mut rest = trimmed.to_string();
+        let mut bullet = "";
+        if rest.starts_with('#') {
+            rest = rest.trim_start_matches('#').trim_start().to_string();
+        } else if rest.starts_with('>') {
+            rest = rest.trim_start_matches('>').trim_start().to_string();
+        } else if rest.starts_with("- ") || rest.starts_with("* ") || rest.starts_with("+ ") {
+            rest = rest[2..].to_string();
+            bullet = "• ";
+        }
+        line = format!("{lead_ws}{bullet}{}", md_inline(&rest));
+
+        // Collapse runs of blank lines.
+        if line.trim().is_empty() {
+            if matches!(out_lines.last(), Some(l) if l.trim().is_empty()) {
+                continue;
+            }
+        }
+        out_lines.push(line);
+    }
+    out_lines.join("\n").trim().to_string()
+}
+
+/// Inline-Markdown cleanup for one line: `![alt](url)` removed, `[text](url)` ->
+/// `text`, and `* \` ~` emphasis/code markers stripped.
+fn md_inline(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let n = chars.len();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < n {
+        let c = chars[i];
+        // Image: drop the whole ![alt](url).
+        if c == '!' && i + 1 < n && chars[i + 1] == '[' {
+            if let Some(j) = link_end(&chars, i + 1) {
+                i = j;
+                continue;
+            }
+        }
+        // Link: keep the bracketed text, drop the (url).
+        if c == '[' {
+            if let Some((text, j)) = take_link(&chars, i) {
+                out.push_str(&text);
+                i = j;
+                continue;
+            }
+        }
+        if c == '*' || c == '`' || c == '~' {
+            i += 1;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
+}
+
+/// Parse `[text](url)` starting at the `[`; returns (text, index-after-`)`).
+fn take_link(chars: &[char], start: usize) -> Option<(String, usize)> {
+    let end = link_end(chars, start)?;
+    // text is between the first '[' and its matching ']'.
+    let mut depth = 0;
+    let mut close = start;
+    for (k, &c) in chars.iter().enumerate().skip(start) {
+        if c == '[' {
+            depth += 1;
+        } else if c == ']' {
+            depth -= 1;
+            if depth == 0 {
+                close = k;
+                break;
+            }
+        }
+    }
+    let text: String = chars[start + 1..close].iter().collect();
+    Some((text, end))
+}
+
+/// Index just past the closing `)` of a `[...](...)` construct at `start` (`[`).
+fn link_end(chars: &[char], start: usize) -> Option<usize> {
+    let n = chars.len();
+    if start >= n || chars[start] != '[' {
+        return None;
+    }
+    let mut depth = 0;
+    let mut i = start;
+    // Match the bracket.
+    while i < n {
+        if chars[i] == '[' {
+            depth += 1;
+        } else if chars[i] == ']' {
+            depth -= 1;
+            if depth == 0 {
+                break;
+            }
+        }
+        i += 1;
+    }
+    // Require "](" immediately after.
+    if i + 1 >= n || chars[i] != ']' || chars[i + 1] != '(' {
+        return None;
+    }
+    i += 2;
+    while i < n && chars[i] != ')' {
+        i += 1;
+    }
+    if i < n && chars[i] == ')' {
+        Some(i + 1)
+    } else {
+        None
+    }
 }
 
 pub fn string_model(items: Vec<String>) -> ModelRc<SharedString> {
