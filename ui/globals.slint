@@ -152,6 +152,23 @@ export struct LogLine {
     level: string,     // "error" / "warn" / "info" / "plain"
 }
 
+// Full-screen image viewer state. Any view can call `show(img, caption)` to pop
+// a clicked thumbnail (screenshot, modpack gallery, …) up at full size; the
+// overlay itself lives once at the top level in main.slint.
+export global Lightbox {
+    in-out property <image> image;
+    in-out property <string> caption;
+    in-out property <bool> open: false;
+    public function show(img: image, label: string) {
+        self.image = img;
+        self.caption = label;
+        self.open = true;
+    }
+    public function close() {
+        self.open = false;
+    }
+}
+
 export global Theme {
     // Surfaces
     in property <color> window-bg: #16161e;

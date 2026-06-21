@@ -1,4 +1,4 @@
-import { Theme, Logic, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
+import { Theme, Logic, Lightbox, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
 import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
 import { ModrinthRow, ModrinthDetailPane } from "modrinth.slint";
 import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
@@ -625,7 +625,15 @@ export component InstancesView inherits Rectangle {
                                 HorizontalLayout {
                                     padding: 10px;
                                     spacing: 12px;
-                                    Image { source: s.image; width: 110px; image-fit: contain; }
+                                    Rectangle {
+                                        width: 110px;
+                                        clip: true;
+                                        Image { width: 100%; height: 100%; source: s.image; image-fit: contain; }
+                                        shot-touch := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { Lightbox.show(s.image, s.filename); }
+                                        }
+                                    }
                                     VerticalLayout {
                                         alignment: center;
                                         horizontal-stretch: 1;

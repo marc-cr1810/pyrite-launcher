@@ -115,8 +115,9 @@ component QuickSwitch inherits Rectangle {
                             text: "No instances"; color: Theme.text-dim; font-size: 12px;
                         }
                         for inst in Logic.instances : PopupRow {
-                            initial: inst.initial;
+                            initial: inst.icon-glyph != "" ? inst.icon-glyph : inst.initial;
                             tint: inst.avatar-color;
+                            photo: inst.icon-image;
                             title: inst.name;
                             subtitle: inst.version + (inst.loader == "" ? "" : "  •  " + inst.loader);
                             selected: inst.active;
@@ -234,8 +235,9 @@ export component PlayView inherits VerticalLayout {
             value: Logic.active-instance-name == "" ? "Select…" : Logic.active-instance-name;
             kind: "instance";
             show-avatar: Logic.active-instance-name != "";
-            avatar-initial: Logic.active-instance-initial;
+            avatar-initial: Logic.active-instance-glyph != "" ? Logic.active-instance-glyph : Logic.active-instance-initial;
             avatar-tint: Logic.active-instance-color;
+            avatar-photo: Logic.active-instance-image;
         }
         QuickSwitch {
             label: "Account";

@@ -1,4 +1,4 @@
-import { Theme, Logic } from "globals.slint";
+import { Theme, Logic, Lightbox } from "globals.slint";
 import { Avatar, Dialog, PButton } from "components.slint";
 import { PlayView } from "views/play.slint";
 import { AccountsView } from "views/accounts.slint";
@@ -158,6 +158,63 @@ export component MainWindow inherits Window {
                     if root.current-view == 3 : SettingsView { }
                     if root.current-view == 4 : ModrinthView { }
                 }
+            }
+        }
+    }
+
+    // Full-screen image viewer (screenshots, gallery images). Click the backdrop
+    // or press Escape to dismiss; clicking the image itself does not close.
+    if Lightbox.open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000e0;
+
+        backdrop := TouchArea {
+            clicked => { Lightbox.close(); }
+        }
+        lb-keys := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    Lightbox.close();
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        init => { lb-keys.focus(); }
+
+        VerticalLayout {
+            padding: 40px;
+            spacing: 14px;
+            Image {
+                vertical-stretch: 1;
+                source: Lightbox.image;
+                image-fit: contain;
+                // Swallow clicks so the image area doesn't dismiss the viewer.
+                TouchArea { mouse-cursor: default; }
+            }
+            if Lightbox.caption != "" : Text {
+                text: Lightbox.caption;
+                color: Theme.text;
+                font-size: 13px;
+                horizontal-alignment: center;
+            }
+        }
+
+        // Close affordance, top-right.
+        Rectangle {
+            x: parent.width - self.width - 24px;
+            y: 24px;
+            width: 40px;
+            height: 40px;
+            border-radius: Theme.radius-sm;
+            background: close-touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
+            border-width: 1px;
+            border-color: Theme.border;
+            Text { text: "✕"; color: Theme.text; font-size: 18px; horizontal-alignment: center; vertical-alignment: center; }
+            close-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Lightbox.close(); }
             }
         }
     }
