@@ -101,6 +101,8 @@ export struct ModItem {
     description: string,   // plain text (codes stripped); "" => no description
     desc-lines: [FmtLine], // colored render of the description
     enabled: bool,
+    update-available: bool,    // a newer Modrinth version was found
+    latest-version: string,    // the newer version number, when update-available
 }
 
 export struct VersionItem {
@@ -399,9 +401,25 @@ export global Logic {
     callback prune-cache();
     callback open-instance-folder(string /* instance id */);
 
-    // --- Crash diagnostics ---
-    in-out property <bool> show-crash-dialog: false;
+    // --- Crash diagnostics (inline panel on the Play view) ---
+    in-out property <bool> crash-visible: false;
     in-out property <string> crash-title;
     in-out property <string> crash-description;
+    in-out property <string> crash-category;       // "java"|"memory"|"graphics"|"mod"|"unknown"
     in-out property <[string]> crash-solutions;
+    in-out property <[string]> crash-excerpt;       // relevant log lines, verbatim
+    in-out property <string> crash-report-path;     // "" when no crash-report file was found
+    callback open-crash-report();                   // opens the crash-reports folder
+    callback copy-crash-details();                  // copies title+description+solutions+excerpt
+
+    // --- Change an existing instance's Minecraft version / mod loader ---
+    // id, game-version, loader ("" = Vanilla), loader-version ("" = recommended).
+    callback change-version(string, string, string, string);
+
+    // --- Mod update checking (Mods tab) ---
+    in property <bool> mod-updates-checking;        // a check is in flight
+    in property <int> mod-update-count;             // updates available for the open instance
+    callback check-mod-updates(string /* id */);
+    callback update-mod(string /* id */, string /* filename */);
+    callback update-all-mods(string /* id */);
 }

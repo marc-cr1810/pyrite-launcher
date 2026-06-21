@@ -50,7 +50,18 @@ fn populate(ui: &MainWindow, state: &AppState, id: &str) {
     logic.set_inst_screenshots(shots_model);
     logic.set_inst_screenshot_images(shot_images);
     logic.set_inst_screenshot_captions(shot_captions);
-    logic.set_inst_mods(convert::mods_model(&mods));
+    // Apply any cached mod-update results, but only if they were computed for
+    // this same instance (otherwise show no update flags).
+    let updates = {
+        let cache = state.mod_updates.lock().unwrap();
+        if cache.instance_id == id {
+            cache.updates.clone()
+        } else {
+            std::collections::HashMap::new()
+        }
+    };
+    logic.set_mod_update_count(updates.len() as i32);
+    logic.set_inst_mods(convert::mods_model(&mods, &updates));
     logic.set_inst_backups(convert::backups_model(&inst.path, &backups));
     logic.set_inst_supports_mods(loader.is_some());
     logic.set_inst_supports_shaders(assets::detect_shader_support(&inst.path));

@@ -749,6 +749,37 @@ impl ApiClient {
             .map(|r| r.hits)
     }
 
+    /// Check a batch of mod file hashes for newer versions via Modrinth's
+    /// `version_files/update` endpoint. Returns a map of the *input* sha1 hash to
+    /// the latest `ModrinthVersion` matching the given loaders + game versions.
+    /// Hashes with no compatible newer match are simply absent from the map.
+    pub async fn check_updates(
+        &self,
+        sha1_hashes: &[String],
+        loaders: &[String],
+        game_versions: &[String],
+    ) -> Result<HashMap<String, ModrinthVersion>, String> {
+        if sha1_hashes.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let url = "https://api.modrinth.com/v2/version_files/update";
+        let body = serde_json::json!({
+            "hashes": sha1_hashes,
+            "algorithm": "sha1",
+            "loaders": loaders,
+            "game_versions": game_versions,
+        });
+        self.client.post(url)
+            .header("User-Agent", "pyrite-launcher/0.1.0")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to check for mod updates: {}", e))?
+            .json::<HashMap<String, ModrinthVersion>>()
+            .await
+            .map_err(|e| format!("Failed to parse mod update response: {}", e))
+    }
+
     pub async fn fetch_project(&self, project_id: &str) -> Result<ModrinthProject, String> {
         let url = format!("https://api.modrinth.com/v2/project/{}", project_id);
         self.client.get(&url)

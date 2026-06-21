@@ -147,6 +147,9 @@ export component InstancesView inherits Rectangle {
     property <bool> browse-open: false;
     property <string> browse-kind;   // "mod" | "resourcepack" | "shader"
     property <string> browse-title;
+    // Change version/loader dialog for the selected instance.
+    property <bool> version-dialog-open: false;
+    property <string> ver-loader: "Vanilla";  // currently-chosen loader in that dialog
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
     // Empty image, used as the "no custom photo" fallback for avatars.
     property <image> no-image;
@@ -453,9 +456,32 @@ export component InstancesView inherits Rectangle {
                         Text { text: "Post-exit command"; color: Theme.text-muted; font-size: 12px; }
                         post-edit := LineEdit { text <=> root.edit-post-exit; placeholder-text: "Optional command run after the game exits"; }
 
-                        Text {
-                            text: "To change the Minecraft version or mod loader, create a new instance.";
-                            color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text { text: "Minecraft version / mod loader"; color: Theme.text-muted; font-size: 12px; }
+                                Text {
+                                    text: root.sel-version + (root.sel-loader == "" ? "" : "  •  " + root.sel-loader);
+                                    color: Theme.text; font-size: 13px; font-weight: 600;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                PButton {
+                                    text: "Change…";
+                                    clicked => {
+                                        root.ver-loader = root.sel-loader == "" ? "Vanilla"
+                                            : (root.sel-loader == "fabric" ? "Fabric"
+                                            : root.sel-loader == "neoforge" ? "NeoForge"
+                                            : root.sel-loader == "forge" ? "Forge" : "Vanilla");
+                                        root.version-dialog-open = true;
+                                        Logic.load-versions();
+                                    }
+                                }
+                            }
                         }
 
                         HorizontalLayout {
@@ -578,7 +604,16 @@ export component InstancesView inherits Rectangle {
                     HorizontalLayout {
                         spacing: 8px;
                         Rectangle { horizontal-stretch: 1; }
-                        PButton { text: "Browse Modrinth"; primary: true; clicked => { root.open-browse("mod", "mods"); } }
+                        PButton {
+                            text: Logic.mod-updates-checking ? "Checking…" : "Check for updates";
+                            enabled: !Logic.mod-updates-checking;
+                            clicked => { Logic.check-mod-updates(root.selected-id); }
+                        }
+                        if Logic.mod-update-count > 0 : PButton {
+                            text: "Update all (" + Logic.mod-update-count + ")"; primary: true;
+                            clicked => { Logic.update-all-mods(root.selected-id); }
+                        }
+                        PButton { text: "Browse Modrinth"; clicked => { root.open-browse("mod", "mods"); } }
                         PButton { text: "+ Add…"; clicked => { Logic.add-files(root.selected-id, "mods"); } }
                         PButton { text: "Open folder"; clicked => { Logic.open-instance-dir(root.selected-id, "mods"); } }
                     }
@@ -608,8 +643,17 @@ export component InstancesView inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         alignment: center;
-                                        width: 120px;
+                                        width: 130px;
+                                        spacing: 2px;
                                         Text { text: m.version; color: Theme.text-dim; font-size: 11px; horizontal-alignment: right; overflow: elide; }
+                                        if m.update-available : Text {
+                                            text: "→ " + m.latest-version; color: Theme.success; font-size: 11px;
+                                            horizontal-alignment: right; overflow: elide;
+                                        }
+                                    }
+                                    if m.update-available : VerticalLayout {
+                                        alignment: center;
+                                        PButton { text: "Update"; primary: true; clicked => { Logic.update-mod(root.selected-id, m.filename); } }
                                     }
                                     VerticalLayout { alignment: center; PButton { text: m.enabled ? "Disable" : "Enable"; clicked => { Logic.toggle-mod(root.selected-id, m.filename, !m.enabled); } } }
                                     VerticalLayout { alignment: center; PButton { text: "Remove"; danger: true; clicked => { root.pending-mod-filename = m.filename; root.pending-mod-name = m.name; root.mod-confirm-open = true; } } }
@@ -834,6 +878,103 @@ export component InstancesView inherits Rectangle {
                     create-name-edit.text = "";
                     mem-create-slider.value = 2048;
                     jvm-create-edit.text = "";
+                }
+            }
+        }
+    }
+
+    // ---- Change version / loader dialog ----
+    if root.version-dialog-open : Dialog {
+        dialog-width: 520px;
+        closed => { root.version-dialog-open = false; root.restore-icon-picker(); }
+        Text { text: "Change version / loader"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        Text {
+            text: "Changing the Minecraft version or mod loader does not remove your installed mods — some may become incompatible. Use 'Check for updates' afterwards.";
+            color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 6px;
+                width: 150px;
+                Text { text: "Version type"; color: Theme.text-muted; font-size: 12px; }
+                ver-type-combo := ComboBox {
+                    model: ["Release", "Snapshot", "Beta", "Alpha"];
+                    current-index: 0;
+                    selected(val) => {
+                        Logic.filter-versions(
+                            val == "Release" ? "release"
+                            : val == "Snapshot" ? "snapshot"
+                            : val == "Beta" ? "old_beta"
+                            : "old_alpha");
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "Minecraft version"; color: Theme.text-muted; font-size: 12px; }
+                ver-version-combo := ComboBox {
+                    model: Logic.version-list;
+                    enabled: !Logic.versions-loading && Logic.version-list.length > 0;
+                }
+            }
+        }
+        if Logic.versions-loading : Text { text: "Loading versions…"; color: Theme.text-dim; font-size: 11px; }
+
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "Mod loader"; color: Theme.text-muted; font-size: 12px; }
+                ver-loader-combo := ComboBox {
+                    model: root.loaders;
+                    current-value <=> root.ver-loader;
+                    selected(val) => {
+                        if val != "Vanilla" && ver-version-combo.current-value != "" {
+                            Logic.load-loader-versions(val, ver-version-combo.current-value);
+                        }
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "Loader version"; color: Theme.text-muted; font-size: 12px; }
+                ver-loaderver-combo := ComboBox {
+                    model: Logic.loader-version-list;
+                    enabled: ver-loader-combo.current-value != "Vanilla"
+                        && !Logic.loader-versions-loading
+                        && Logic.loader-version-list.length > 0;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { root.version-dialog-open = false; } }
+            PButton {
+                text: "Apply";
+                primary: true;
+                enabled: ver-version-combo.current-value != "";
+                clicked => {
+                    Logic.change-version(
+                        root.selected-id,
+                        ver-version-combo.current-value,
+                        ver-loader-combo.current-value == "Vanilla" ? "" : ver-loader-combo.current-value,
+                        ver-loader-combo.current-value == "Vanilla" ? ""
+                            : (ver-loaderver-combo.current-value == "Recommended" ? "" : ver-loaderver-combo.current-value));
+                    // Optimistically reflect the change in the detail header.
+                    root.sel-version = ver-version-combo.current-value;
+                    root.sel-loader = ver-loader-combo.current-value == "Vanilla" ? ""
+                        : (ver-loader-combo.current-value == "Fabric" ? "fabric"
+                        : ver-loader-combo.current-value == "NeoForge" ? "neoforge"
+                        : ver-loader-combo.current-value == "Forge" ? "forge" : "");
+                    root.version-dialog-open = false;
                 }
             }
         }

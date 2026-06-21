@@ -6,6 +6,7 @@ pub mod details;
 pub mod instances;
 pub mod launch;
 pub mod modrinth;
+pub mod modupdate;
 pub mod settings;
 pub mod storage;
 pub mod versions;
@@ -239,6 +240,37 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
             details::delete_backup(&st, &weak, id.to_string(), filename.to_string());
         });
     }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_check_mod_updates(move |id| modupdate::check(&st, &weak, id.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_update_mod(move |id, filename| {
+            modupdate::update_one(&st, &weak, id.to_string(), filename.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_update_all_mods(move |id| modupdate::update_all(&st, &weak, id.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_change_version(move |id, game_version, loader, loader_version| {
+            instances::change_version(
+                &st,
+                &weak,
+                id.to_string(),
+                game_version.to_string(),
+                loader.to_string(),
+                loader_version.to_string(),
+            );
+        });
+    }
 
     // --- Modrinth ---
     {
@@ -319,6 +351,31 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     {
         let st = state.clone();
         logic.on_copy_logs(move || launch::copy_logs(&st));
+    }
+    {
+        let weak = ui.as_weak();
+        logic.on_open_crash_report(move || {
+            if let Some(ui) = weak.upgrade() {
+                launch::open_crash_report(ui.global::<Logic>().get_crash_report_path().to_string());
+            }
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        logic.on_copy_crash_details(move || {
+            use slint::Model;
+            if let Some(ui) = weak.upgrade() {
+                let logic = ui.global::<Logic>();
+                let solutions = logic.get_crash_solutions().iter().map(|s| s.to_string()).collect();
+                let excerpt = logic.get_crash_excerpt().iter().map(|s| s.to_string()).collect();
+                launch::copy_crash_details(
+                    logic.get_crash_title().to_string(),
+                    logic.get_crash_description().to_string(),
+                    solutions,
+                    excerpt,
+                );
+            }
+        });
     }
 
     // --- Settings ---

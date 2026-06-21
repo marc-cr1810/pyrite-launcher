@@ -55,6 +55,27 @@ pub struct AppState {
     /// The active Modrinth search (query/kind/scope + total hit count), so
     /// "load more" can fetch the next page and append to `modrinth_results`.
     pub modrinth_search: Arc<Mutex<ModrinthSearchCtx>>,
+    /// Available mod updates found by the last "Check for updates" run, scoped to
+    /// one instance. Read on the UI thread when (re)building the mods model.
+    pub mod_updates: Arc<Mutex<ModUpdateCache>>,
+}
+
+/// Result of checking an instance's mods for newer Modrinth versions.
+#[derive(Default, Clone)]
+pub struct ModUpdateCache {
+    /// Instance the `updates` belong to; cleared/ignored for any other instance.
+    pub instance_id: String,
+    /// Keyed by the currently-installed mod's on-disk filename.
+    pub updates: HashMap<String, ModUpdate>,
+}
+
+/// A newer version available for one installed mod.
+#[derive(Clone)]
+pub struct ModUpdate {
+    pub version_number: String,
+    pub url: String,
+    pub sha1: Option<String>,
+    pub new_filename: String,
 }
 
 /// Parameters of the in-progress Modrinth search, for pagination.

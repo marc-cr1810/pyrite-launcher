@@ -271,6 +271,68 @@ export component PlayView inherits VerticalLayout {
         PProgress { value: Logic.progress-value; indeterminate: Logic.progress-indeterminate; }
     }
 
+    // ---- Crash diagnostics panel (inline; persists until dismissed/next launch) ----
+    if Logic.crash-visible : crash-panel := Rectangle {
+        property <color> accent:
+            Logic.crash-category == "mod" ? Theme.error
+            : Logic.crash-category == "graphics" ? Theme.accent
+            : Logic.crash-category == "unknown" ? Theme.text-muted
+            : Theme.warning; // java / memory
+        vertical-stretch: 0;
+        border-radius: Theme.radius;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: crash-panel.accent;
+        clip: true;
+        HorizontalLayout {
+            // Category accent stripe.
+            Rectangle { width: 4px; background: crash-panel.accent; }
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "⚠"; color: crash-panel.accent; font-size: 16px; vertical-alignment: center; }
+                    Text {
+                        text: Logic.crash-title; color: Theme.text; font-size: 16px; font-weight: 700;
+                        horizontal-stretch: 1; vertical-alignment: center; overflow: elide;
+                    }
+                    PButton { text: "Dismiss"; ghost: true; height: 26px; clicked => { Logic.crash-visible = false; } }
+                }
+                Text { text: Logic.crash-description; color: Theme.text-muted; font-size: 13px; wrap: word-wrap; }
+
+                Text { text: "What to try"; color: Theme.text; font-size: 13px; font-weight: 600; }
+                for sol in Logic.crash-solutions : HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "•"; color: crash-panel.accent; font-size: 13px; }
+                    Text { text: sol; color: Theme.text-muted; font-size: 13px; wrap: word-wrap; horizontal-stretch: 1; }
+                }
+
+                if Logic.crash-excerpt.length > 0 : Rectangle {
+                    border-radius: Theme.radius-sm;
+                    background: Theme.surface-alt;
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 2px;
+                        for line in Logic.crash-excerpt : Text {
+                            text: line; color: Theme.error; font-size: 11px; font-family: "monospace"; wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    padding-top: 2px;
+                    if Logic.crash-report-path != "" : PButton {
+                        text: "Open crash report"; height: 28px; clicked => { Logic.open-crash-report(); }
+                    }
+                    PButton { text: "Copy details"; ghost: true; height: 28px; clicked => { Logic.copy-crash-details(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+            }
+        }
+    }
+
     // ---- Log toolbar + view ----
     HorizontalLayout {
         spacing: 10px;

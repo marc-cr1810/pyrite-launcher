@@ -588,16 +588,24 @@ pub fn backups_model(instance_path: &Path, backups: &[String]) -> ModelRc<Backup
     ModelRc::new(VecModel::from(items))
 }
 
-pub fn mods_model(mods: &[InstanceMod]) -> ModelRc<ModItem> {
+pub fn mods_model(
+    mods: &[InstanceMod],
+    updates: &std::collections::HashMap<String, crate::app::state::ModUpdate>,
+) -> ModelRc<ModItem> {
     let items: Vec<ModItem> = mods
         .iter()
-        .map(|m| ModItem {
-            filename: m.filename.clone().into(),
-            name: m.metadata.name.clone().into(),
-            version: m.metadata.version.clone().into(),
-            description: strip_mc_formatting(m.metadata.description.as_deref().unwrap_or_default()).into(),
-            desc_lines: parse_formatted(m.metadata.description.as_deref().unwrap_or_default(), 2),
-            enabled: m.enabled,
+        .map(|m| {
+            let update = updates.get(&m.filename);
+            ModItem {
+                filename: m.filename.clone().into(),
+                name: m.metadata.name.clone().into(),
+                version: m.metadata.version.clone().into(),
+                description: strip_mc_formatting(m.metadata.description.as_deref().unwrap_or_default()).into(),
+                desc_lines: parse_formatted(m.metadata.description.as_deref().unwrap_or_default(), 2),
+                enabled: m.enabled,
+                update_available: update.is_some(),
+                latest_version: update.map(|u| u.version_number.clone()).unwrap_or_default().into(),
+            }
         })
         .collect();
     ModelRc::new(VecModel::from(items))

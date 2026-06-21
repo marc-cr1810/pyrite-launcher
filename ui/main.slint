@@ -270,27 +270,6 @@ export component MainWindow inherits Window {
         }
     }
 
-    if Logic.show-crash-dialog : Dialog {
-        dialog-width: 500px;
-        closed => { Logic.show-crash-dialog = false; }
-        Text { text: Logic.crash-title; color: Theme.text; font-size: 18px; font-weight: 700; }
-        Text {
-            text: Logic.crash-description;
-            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
-        }
-        Text { text: "Possible Solutions:"; color: Theme.text; font-size: 14px; font-weight: 600; }
-        for sol in Logic.crash-solutions : HorizontalLayout {
-            spacing: 6px;
-            Text { text: "•"; color: Theme.accent; font-size: 13px; }
-            Text { text: sol; color: Theme.text-muted; font-size: 13px; wrap: word-wrap; }
-        }
-        HorizontalLayout {
-            alignment: end;
-            padding-top: 8px;
-            PButton { text: "Close"; primary: true; clicked => { Logic.show-crash-dialog = false; } }
-        }
-    }
-
     if Logic.show-prune-dialog : Dialog {
         dialog-width: 460px;
         closed => { Logic.show-prune-dialog = false; }

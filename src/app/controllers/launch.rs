@@ -24,6 +24,36 @@ pub fn clear_logs(state: &AppState, weak: &Weak<MainWindow>) {
     });
 }
 
+/// Open the crash-report file (or its folder) in the system default handler.
+pub fn open_crash_report(path: String) {
+    if path.is_empty() {
+        return;
+    }
+    let _ = open::that(&path);
+}
+
+/// Copy a formatted summary of the crash analysis to the system clipboard.
+pub fn copy_crash_details(
+    title: String,
+    description: String,
+    solutions: Vec<String>,
+    excerpt: Vec<String>,
+) {
+    let mut text = format!("{title}\n\n{description}\n\nWhat to try:\n");
+    for s in solutions {
+        text.push_str(&format!("- {s}\n"));
+    }
+    if !excerpt.is_empty() {
+        text.push_str("\nLog excerpt:\n");
+        for e in excerpt {
+            text.push_str(&format!("{e}\n"));
+        }
+    }
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        let _ = clipboard.set_text(text);
+    }
+}
+
 /// Copy the full game log to the system clipboard.
 pub fn copy_logs(state: &AppState) {
     let text = state.log_buf.lock().unwrap().join("\n");
@@ -51,6 +81,8 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
     state.rt.clone().spawn(async move {
         set_busy(&weak, true);
         ui::progress_indeterminate_async(&weak, true);
+        // Clear any crash panel from a previous launch.
+        let _ = weak.upgrade_in_event_loop(|ui| ui.global::<Logic>().set_crash_visible(false));
 
         // Snapshot what we need from config.
         let (config, instance, account) = {
@@ -176,11 +208,18 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
                         let logic = ui.global::<Logic>();
                         logic.set_crash_title(analysis.title.into());
                         logic.set_crash_description(analysis.description.into());
+                        logic.set_crash_category(analysis.category.into());
+                        logic.set_crash_report_path(analysis.report_path.unwrap_or_default().into());
 
-                        let solutions: Vec<slint::SharedString> = analysis.possible_solutions.into_iter().map(|s| s.into()).collect();
-                        let model = slint::ModelRc::new(slint::VecModel::from(solutions));
-                        logic.set_crash_solutions(model);
-                        logic.set_show_crash_dialog(true);
+                        let solutions: Vec<slint::SharedString> =
+                            analysis.possible_solutions.into_iter().map(|s| s.into()).collect();
+                        logic.set_crash_solutions(slint::ModelRc::new(slint::VecModel::from(solutions)));
+
+                        let excerpt: Vec<slint::SharedString> =
+                            analysis.excerpt.into_iter().map(|s| s.into()).collect();
+                        logic.set_crash_excerpt(slint::ModelRc::new(slint::VecModel::from(excerpt)));
+
+                        logic.set_crash_visible(true);
                     });
                 }
             }

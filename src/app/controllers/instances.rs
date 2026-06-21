@@ -270,6 +270,64 @@ pub fn create(
     });
 }
 
+/// Change an existing instance's Minecraft version and/or mod loader. Re-resolves
+/// the loader profile (writing its version JSON), updates `config.version`, and
+/// clears any stale mod-update cache for the instance.
+pub fn change_version(
+    state: &AppState,
+    weak: &Weak<MainWindow>,
+    id: String,
+    game_version: String,
+    loader: String,
+    loader_version: String,
+) {
+    if game_version.is_empty() {
+        status(weak, "Pick a Minecraft version.");
+        return;
+    }
+    let state = state.clone();
+    let weak = weak.clone();
+    state.rt.clone().spawn(async move {
+        let game_dir = state.game_dir();
+        let api = ApiClient::new();
+
+        status(&weak, "Resolving version…");
+        let version_id = if loader.is_empty() {
+            game_version.clone()
+        } else {
+            let loader_opt = if loader_version.trim().is_empty() {
+                None
+            } else {
+                Some(loader_version.trim().to_string())
+            };
+            match resolve_loader(&api, &game_dir, &game_version, &loader, loader_opt).await {
+                Ok(id) => id,
+                Err(e) => return status(&weak, format!("Failed: {e}")),
+            }
+        };
+
+        let mut inst = match Instance::load(&id, game_dir.join("instances").join(&id)) {
+            Ok(inst) => inst,
+            Err(e) => return status(&weak, format!("Failed to load instance: {e}")),
+        };
+        inst.config.version = version_id;
+        if let Err(e) = inst.save() {
+            return status(&weak, format!("Failed to save instance: {e}"));
+        }
+
+        // The mods that were checked against the old version/loader no longer apply.
+        {
+            let mut cache = state.mod_updates.lock().unwrap();
+            if cache.instance_id == id {
+                *cache = Default::default();
+            }
+        }
+
+        status(&weak, "Version updated.");
+        refresh(&state, &weak);
+    });
+}
+
 /// Resolve a mod loader to a concrete version id and write its profile JSON to
 /// the versions directory. Mirrors minecli's `resolve_and_setup_loader`.
 async fn resolve_loader(
