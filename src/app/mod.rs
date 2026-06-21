@@ -59,6 +59,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
         avatar_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
         version_cache: Arc::new(Mutex::new(Vec::new())),
         pending_icon_path: Arc::new(Mutex::new(None)),
+        modrinth_results: Arc::new(Mutex::new(Vec::new())),
+        modrinth_icon_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
     };
 
     let window = MainWindow::new()?;

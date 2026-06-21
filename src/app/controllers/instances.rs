@@ -120,7 +120,7 @@ pub fn reset_pending_icon(state: &AppState) {
 /// Apply the chosen icon to an instance's config (and filesystem). `icon_id` is
 /// "" (monogram), a built-in id, or "custom" (use the pending picked PNG, or
 /// keep the existing icon.png if none was picked).
-fn apply_icon(state: &AppState, inst: &mut Instance, icon_id: &str) -> Result<(), String> {
+pub(crate) fn apply_icon(state: &AppState, inst: &mut Instance, icon_id: &str) -> Result<(), String> {
     let icon_png = inst.path.join("icon.png");
     let pending = state.pending_icon_path.lock().unwrap().take();
     match icon_id {
@@ -146,7 +146,7 @@ fn apply_icon(state: &AppState, inst: &mut Instance, icon_id: &str) -> Result<()
 
 /// Build the JVM args vector from a max-memory field (MB) plus extra args.
 /// Returns `None` when both are empty (so the field is omitted from the toml).
-fn build_jvm_args(memory_mb: &str, extra: &str) -> Option<Vec<String>> {
+pub(crate) fn build_jvm_args(memory_mb: &str, extra: &str) -> Option<Vec<String>> {
     let mut args = Vec::new();
     if let Ok(mb) = memory_mb.trim().parse::<u64>()
         && mb > 0
@@ -340,7 +340,7 @@ async fn resolve_loader(
 }
 
 /// Build a filesystem-safe, unique instance id from a display name.
-fn unique_id(game_dir: &Path, name: &str) -> String {
+pub(crate) fn unique_id(game_dir: &Path, name: &str) -> String {
     let base: String = name
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })

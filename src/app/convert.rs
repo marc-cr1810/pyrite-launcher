@@ -7,14 +7,16 @@ use std::io::Read;
 use slint::{Color, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use crate::app::avatars;
+use crate::app::avatars::AvatarEntry;
 use crate::app::icons;
 use crate::app::state::AppState;
+use crate::core::api::ModrinthSearchHit;
 use crate::core::assets::{AssetInfo, ScreenshotInfo, WorldInfo};
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::{Instance, InstanceMod};
 use crate::{
     AccountItem, AssetItem, BackupItem, FmtLine, FmtSpan, InstanceItem, JavaRuntimeItem, LogLine, ModItem,
-    ScreenshotItem, WorldItem,
+    ModrinthHit, ScreenshotItem, WorldItem,
 };
 
 /// Glyph to render in place of the monogram for a built-in instance icon.
@@ -544,6 +546,46 @@ pub fn mods_model(mods: &[InstanceMod]) -> ModelRc<ModItem> {
             description: strip_mc_formatting(m.metadata.description.as_deref().unwrap_or_default()).into(),
             desc_lines: parse_formatted(m.metadata.description.as_deref().unwrap_or_default(), 2),
             enabled: m.enabled,
+        })
+        .collect();
+    ModelRc::new(VecModel::from(items))
+}
+
+/// Format a download count compactly ("1.2M", "12.3K", "987").
+pub fn human_count(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
+}
+
+/// Build a `slint::Image` for a cached Modrinth project icon, or an empty image
+/// when it is not ready yet. Must be called on the UI thread.
+pub fn modrinth_icon_image(state: &AppState, project_id: &str) -> Image {
+    let cache = state.modrinth_icon_cache.lock().unwrap();
+    if let Some(AvatarEntry::Ready { rgba, width, height }) = cache.get(project_id) {
+        let mut buf = SharedPixelBuffer::<Rgba8Pixel>::new(*width, *height);
+        buf.make_mut_bytes().copy_from_slice(rgba);
+        Image::from_rgba8(buf)
+    } else {
+        Image::default()
+    }
+}
+
+pub fn modrinth_results_model(hits: &[ModrinthSearchHit], state: &AppState) -> ModelRc<ModrinthHit> {
+    let items: Vec<ModrinthHit> = hits
+        .iter()
+        .map(|h| ModrinthHit {
+            project_id: h.project_id.clone().into(),
+            slug: h.slug.clone().into(),
+            title: h.title.clone().into(),
+            description: h.description.clone().into(),
+            author: h.author.clone().into(),
+            downloads: format!("{} downloads", human_count(h.downloads)).into(),
+            icon: modrinth_icon_image(state, &h.project_id),
         })
         .collect();
     ModelRc::new(VecModel::from(items))

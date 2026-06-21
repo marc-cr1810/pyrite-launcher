@@ -5,6 +5,7 @@ pub mod accounts;
 pub mod details;
 pub mod instances;
 pub mod launch;
+pub mod modrinth;
 pub mod settings;
 pub mod versions;
 
@@ -235,6 +236,47 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
         logic.on_delete_backup(move |id, filename| {
             details::delete_backup(&st, &weak, id.to_string(), filename.to_string());
         });
+    }
+
+    // --- Modrinth ---
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_modrinth_search(move |query, kind, id| {
+            modrinth::search(&st, &weak, query.to_string(), kind.to_string(), id.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_modrinth_install(move |id, project_id, kind| {
+            modrinth::install(&st, &weak, id.to_string(), project_id.to_string(), kind.to_string());
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_modrinth_create_instance(move |project_id, name, icon_id, memory, jvm_args| {
+            modrinth::create_instance(
+                &st,
+                &weak,
+                project_id.to_string(),
+                name.to_string(),
+                icon_id.to_string(),
+                memory.to_string(),
+                jvm_args.to_string(),
+            );
+        });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_import_mrpack(move || modrinth::import_file(&st, &weak));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_export_mrpack(move |id| modrinth::export_file(&st, &weak, id.to_string()));
     }
 
     // --- Play ---

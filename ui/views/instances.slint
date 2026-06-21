@@ -1,5 +1,6 @@
 import { Theme, Logic, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
 import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
+import { ModrinthRow } from "modrinth.slint";
 import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 
 // One tab in the detail-pane tab bar, with an underline accent when active.
@@ -55,6 +56,7 @@ component AssetSection inherits VerticalLayout {
     in property <[AssetItem]> model;
     in property <string> empty-title;
     callback add();
+    callback browse();
     callback openf();
     callback toggle(string /* filename */);
     callback remove(string /* filename */, string /* display-name */);
@@ -63,6 +65,7 @@ component AssetSection inherits VerticalLayout {
     HorizontalLayout {
         spacing: 8px;
         Rectangle { horizontal-stretch: 1; }
+        PButton { text: "Browse Modrinth"; primary: true; clicked => { root.browse(); } }
         PButton { text: "+ Add…"; clicked => { root.add(); } }
         PButton { text: "Open folder"; clicked => { root.openf(); } }
     }
@@ -140,6 +143,10 @@ export component InstancesView inherits Rectangle {
     property <string> pending-pack-filename;
     property <string> pending-pack-name;
     property <string> pending-pack-type;
+    // Modrinth browse dialog (mods / resource packs / shaders) for the open instance.
+    property <bool> browse-open: false;
+    property <string> browse-kind;   // "mod" | "resourcepack" | "shader"
+    property <string> browse-title;
     property <[string]> loaders: ["Vanilla", "Fabric", "Forge", "NeoForge"];
     // Empty image, used as the "no custom photo" fallback for avatars.
     property <image> no-image;
@@ -205,6 +212,14 @@ export component InstancesView inherits Rectangle {
         Logic.load-instance-details(inst.id);
     }
 
+    // Open the Modrinth browse dialog scoped to the selected instance.
+    function open-browse(kind: string, title: string) {
+        root.browse-kind = kind;
+        root.browse-title = title;
+        root.browse-open = true;
+        Logic.modrinth-search("", kind, root.selected-id);
+    }
+
     HorizontalLayout {
         padding: 24px;
         spacing: 18px;
@@ -214,15 +229,23 @@ export component InstancesView inherits Rectangle {
             width: 320px;
             spacing: 12px;
 
-            PButton {
-                text: "+ New Instance";
-                primary: true;
-                clicked => {
-                    Logic.pending-icon-id = "";
-                    Logic.pending-icon-glyph = "";
-                    Logic.reset-pending-icon-file();
-                    root.dialog-open = true;
-                    Logic.load-versions();
+            HorizontalLayout {
+                spacing: 8px;
+                PButton {
+                    text: "+ New Instance";
+                    primary: true;
+                    horizontal-stretch: 1;
+                    clicked => {
+                        Logic.pending-icon-id = "";
+                        Logic.pending-icon-glyph = "";
+                        Logic.reset-pending-icon-file();
+                        root.dialog-open = true;
+                        Logic.load-versions();
+                    }
+                }
+                PButton {
+                    text: "Import .mrpack";
+                    clicked => { Logic.import-mrpack(); }
                 }
             }
 
@@ -421,6 +444,7 @@ export component InstancesView inherits Rectangle {
                             padding-top: 4px;
                             PButton { text: "Delete"; danger: true; clicked => { root.confirm-open = true; } }
                             PButton { text: "Duplicate"; clicked => { Logic.duplicate-instance(root.selected-id); } }
+                            PButton { text: "Export .mrpack"; clicked => { Logic.export-mrpack(root.selected-id); } }
                             Rectangle { horizontal-stretch: 1; }
                             PButton {
                                 text: "Save changes";
@@ -499,6 +523,7 @@ export component InstancesView inherits Rectangle {
                     model: Logic.inst-resourcepacks;
                     empty-title: "No resource packs";
                     add => { Logic.add-files(root.selected-id, "resourcepacks"); }
+                    browse => { root.open-browse("resourcepack", "resource packs"); }
                     openf => { Logic.open-instance-dir(root.selected-id, "resourcepacks"); }
                     toggle(f) => { Logic.toggle-resourcepack(root.selected-id, f); }
                     remove(f, name) => {
@@ -515,6 +540,7 @@ export component InstancesView inherits Rectangle {
                     model: Logic.inst-shaderpacks;
                     empty-title: "No shader packs";
                     add => { Logic.add-files(root.selected-id, "shaderpacks"); }
+                    browse => { root.open-browse("shader", "shaders"); }
                     openf => { Logic.open-instance-dir(root.selected-id, "shaderpacks"); }
                     toggle(f) => { Logic.toggle-shaderpack(root.selected-id, f); }
                     remove(f, name) => {
@@ -532,6 +558,7 @@ export component InstancesView inherits Rectangle {
                     HorizontalLayout {
                         spacing: 8px;
                         Rectangle { horizontal-stretch: 1; }
+                        PButton { text: "Browse Modrinth"; primary: true; clicked => { root.open-browse("mod", "mods"); } }
                         PButton { text: "+ Add…"; clicked => { Logic.add-files(root.selected-id, "mods"); } }
                         PButton { text: "Open folder"; clicked => { Logic.open-instance-dir(root.selected-id, "mods"); } }
                     }
@@ -777,6 +804,43 @@ export component InstancesView inherits Rectangle {
                     jvm-create-edit.text = "";
                 }
             }
+        }
+    }
+
+    // ---- Modrinth browse dialog (mods / resource packs / shaders) ----
+    if root.browse-open : Dialog {
+        dialog-width: 660px;
+        closed => { root.browse-open = false; }
+        Text { text: "Browse " + root.browse-title; color: Theme.text; font-size: 18px; font-weight: 700; }
+        HorizontalLayout {
+            spacing: 8px;
+            bsearch := LineEdit {
+                horizontal-stretch: 1;
+                placeholder-text: "Search Modrinth…";
+                accepted => { Logic.modrinth-search(self.text, root.browse-kind, root.selected-id); }
+            }
+            PButton { text: "Search"; primary: true; clicked => { Logic.modrinth-search(bsearch.text, root.browse-kind, root.selected-id); } }
+        }
+        if Logic.modrinth-loading : Text { text: "Searching…"; color: Theme.text-dim; font-size: 12px; }
+        if !Logic.modrinth-loading && Logic.modrinth-status != "" : Text {
+            text: Logic.modrinth-status; color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
+        }
+        Rectangle {
+            height: 360px;
+            ScrollView {
+                VerticalLayout {
+                    spacing: 8px;
+                    for hit in Logic.modrinth-results : ModrinthRow {
+                        hit: hit;
+                        action-text: "Install";
+                        action => { Logic.modrinth-install(root.selected-id, hit.project-id, root.browse-kind); }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            PButton { text: "Close"; clicked => { root.browse-open = false; } }
         }
     }
 

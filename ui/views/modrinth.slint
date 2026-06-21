@@ -1,0 +1,215 @@
+import { Theme, Logic, ModrinthHit } from "../globals.slint";
+import { Card, PButton, Avatar, EmptyState, Dialog } from "../components.slint";
+import { ScrollView, LineEdit } from "std-widgets.slint";
+
+// A single Modrinth result row: thumbnail, title/description/meta, action button.
+// Reused by the modpack browser here and the in-detail browse dialog.
+export component ModrinthRow inherits Rectangle {
+    in property <ModrinthHit> hit;
+    in property <string> action-text: "Install";
+    in property <bool> action-busy;
+    callback action();
+    height: 88px;
+    border-radius: Theme.radius-sm;
+    background: Theme.surface-alt;
+    clip: true;
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 56px;
+                height: 56px;
+                border-radius: Theme.radius-sm;
+                background: Theme.surface;
+                clip: true;
+                Text { width: 100%; height: 100%; text: "◈"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 24px; }
+                Image { width: 100%; height: 100%; source: root.hit.icon; image-fit: contain; }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 3px;
+            Text { text: root.hit.title; color: Theme.text; font-size: 15px; font-weight: 700; overflow: elide; }
+            Text { text: root.hit.description; color: Theme.text-muted; font-size: 12px; overflow: elide; }
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                Text { text: "by " + root.hit.author; color: Theme.text-dim; font-size: 11px; }
+                Text { text: "⭳ " + root.hit.downloads; color: Theme.text-dim; font-size: 11px; }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            PButton {
+                text: root.action-text;
+                primary: true;
+                enabled: !root.action-busy;
+                clicked => { root.action(); }
+            }
+        }
+    }
+}
+
+export component ModrinthView inherits Rectangle {
+    property <bool> create-open: false;
+    property <ModrinthHit> pending-pack;
+    property <string> create-name;
+    // Empty image, used as the "no photo" fallback for the icon preview.
+    property <image> no-image;
+
+    // Show popular modpacks on first open.
+    init => { Logic.modrinth-search("", "modpack", ""); }
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 14px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            search := LineEdit {
+                horizontal-stretch: 1;
+                placeholder-text: "Search modpacks…";
+                accepted => { Logic.modrinth-search(self.text, "modpack", ""); }
+            }
+            PButton { text: "Search"; primary: true; clicked => { Logic.modrinth-search(search.text, "modpack", ""); } }
+        }
+
+        if Logic.modrinth-loading : Text { text: "Searching…"; color: Theme.text-dim; font-size: 12px; }
+        if !Logic.modrinth-loading && Logic.modrinth-status != "" : Text {
+            text: Logic.modrinth-status; color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
+        }
+
+        if Logic.modrinth-results.length == 0 && !Logic.modrinth-loading : EmptyState {
+            vertical-stretch: 1;
+            icon: "◈";
+            title: "Browse Modrinth modpacks";
+            subtitle: "Search for a modpack and create a configurable instance from it.";
+        }
+
+        if Logic.modrinth-results.length > 0 : Card {
+            vertical-stretch: 1;
+            ScrollView {
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 8px;
+                    for hit in Logic.modrinth-results : ModrinthRow {
+                        hit: hit;
+                        action-text: "Create instance…";
+                        action => {
+                            root.pending-pack = hit;
+                            root.create-name = hit.title;
+                            Logic.pending-icon-id = "modpack";
+                            Logic.pending-icon-glyph = "";
+                            Logic.reset-pending-icon-file();
+                            root.create-open = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Create-from-pack dialog ----
+    if root.create-open : Dialog {
+        dialog-width: 520px;
+        closed => { root.create-open = false; }
+
+        Text {
+            text: "Create instance from “" + root.pending-pack.title + "”";
+            color: Theme.text; font-size: 18px; font-weight: 700; wrap: word-wrap;
+        }
+
+        Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
+        LineEdit { text <=> root.create-name; placeholder-text: "Instance name"; }
+
+        Text { text: "Icon"; color: Theme.text-muted; font-size: 12px; }
+        HorizontalLayout {
+            spacing: 14px;
+            VerticalLayout {
+                alignment: start;
+                Avatar {
+                    initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : (root.create-name == "" ? "?" : root.create-name);
+                    tint: Theme.accent;
+                    size: 56px;
+                    photo: Logic.pending-icon-id == "modpack" ? root.pending-pack.icon
+                        : Logic.pending-icon-id == "custom" ? Logic.pending-icon-image
+                        : root.no-image;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 8px;
+                GridLayout {
+                    spacing: 6px;
+                    for opt[i] in Logic.icon-options : Rectangle {
+                        row: floor(i / 6);
+                        col: mod(i, 6);
+                        width: 34px;
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: Logic.pending-icon-id == opt.id ? Theme.surface-alt : (sw.has-hover ? Theme.surface-hover : transparent);
+                        border-width: 1px;
+                        border-color: Logic.pending-icon-id == opt.id ? Theme.accent : Theme.border;
+                        animate background, border-color { duration: 100ms; }
+                        Text { text: opt.glyph; color: Theme.text; font-size: 17px; horizontal-alignment: center; vertical-alignment: center; }
+                        sw := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Logic.pending-icon-id = opt.id; Logic.pending-icon-glyph = opt.glyph; }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    PButton { text: "Pack icon"; clicked => { Logic.pending-icon-id = "modpack"; Logic.pending-icon-glyph = ""; } }
+                    PButton { text: "Monogram"; clicked => { Logic.pending-icon-id = ""; Logic.pending-icon-glyph = ""; } }
+                    PButton { text: "Choose file…"; clicked => { Logic.pick-custom-icon(); } }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 6px;
+                width: 150px;
+                Text { text: "Max memory (MB)"; color: Theme.text-muted; font-size: 12px; }
+                mem := LineEdit { input-type: number; placeholder-text: "e.g. 4096"; }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
+                jvm := LineEdit { placeholder-text: "-XX:+UseG1GC"; }
+            }
+        }
+
+        Text {
+            text: "The pack's own Minecraft version and mod loader are used automatically.";
+            color: Theme.text-dim; font-size: 11px; wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { root.create-open = false; } }
+            PButton {
+                text: "Create";
+                primary: true;
+                enabled: root.create-name != "";
+                clicked => {
+                    Logic.modrinth-create-instance(
+                        root.pending-pack.project-id,
+                        root.create-name,
+                        Logic.pending-icon-id,
+                        mem.text,
+                        jvm.text);
+                    root.create-open = false;
+                }
+            }
+        }
+    }
+}

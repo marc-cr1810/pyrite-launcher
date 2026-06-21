@@ -7,6 +7,7 @@ use tokio::runtime::Runtime;
 
 use crate::app::avatars::AvatarEntry;
 use crate::app::theme::ThemeStore;
+use crate::core::api::ModrinthSearchHit;
 use crate::core::config::Config;
 
 #[derive(Clone)]
@@ -38,6 +39,12 @@ pub struct AppState {
     /// Path of a custom icon the user just picked in the New Instance / edit
     /// dialog, pending copy into the instance folder on save. Cleared after use.
     pub pending_icon_path: Arc<Mutex<Option<std::path::PathBuf>>>,
+    /// The current Modrinth search results, kept so the results model can be
+    /// rebuilt on the UI thread as icon thumbnails arrive. See `app::controllers::modrinth`.
+    pub modrinth_results: Arc<Mutex<Vec<ModrinthSearchHit>>>,
+    /// Decoded Modrinth project icons, keyed by project id. Populated lazily by
+    /// background fetches, mirroring `avatar_cache`.
+    pub modrinth_icon_cache: Arc<Mutex<HashMap<String, AvatarEntry>>>,
 }
 
 impl AppState {

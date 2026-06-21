@@ -3,12 +3,13 @@ import { Avatar, Dialog, PButton } from "components.slint";
 import { PlayView } from "views/play.slint";
 import { AccountsView } from "views/accounts.slint";
 import { InstancesView } from "views/instances.slint";
+import { ModrinthView } from "views/modrinth.slint";
 import { SettingsView } from "views/settings.slint";
 
 // Re-export so Rust's generated bindings expose these globals/structs.
 export { Theme, Logic }
 export { AccountItem, InstanceItem, VersionItem, LogLine, IconOption } from "globals.slint";
-export { WorldItem, AssetItem, ScreenshotItem, ModItem, FmtSpan, FmtLine, BackupItem } from "globals.slint";
+export { WorldItem, AssetItem, ScreenshotItem, ModItem, FmtSpan, FmtLine, BackupItem, ModrinthHit } from "globals.slint";
 
 component NavItem inherits Rectangle {
     in property <string> label;
@@ -70,6 +71,7 @@ export component MainWindow inherits Window {
                 NavItem { label: "Play"; icon: "▶"; selected: root.current-view == 0; clicked => { root.current-view = 0; } }
                 NavItem { label: "Instances"; icon: "▤"; selected: root.current-view == 1; clicked => { root.current-view = 1; } }
                 NavItem { label: "Accounts"; icon: "◴"; selected: root.current-view == 2; clicked => { root.current-view = 2; } }
+                NavItem { label: "Modrinth"; icon: "◈"; selected: root.current-view == 4; clicked => { root.current-view = 4; } }
                 Rectangle { vertical-stretch: 1; }
                 NavItem { label: "Settings"; icon: "⚙"; selected: root.current-view == 3; clicked => { root.current-view = 3; } }
                 // Active account footer
@@ -102,6 +104,7 @@ export component MainWindow inherits Window {
                             text: root.current-view == 0 ? "Play"
                                 : root.current-view == 1 ? "Instances"
                                 : root.current-view == 2 ? "Accounts"
+                                : root.current-view == 4 ? "Modrinth"
                                 : "Settings";
                             color: Theme.text;
                             font-size: 22px;
@@ -152,6 +155,7 @@ export component MainWindow inherits Window {
                     if root.current-view == 1 : InstancesView { }
                     if root.current-view == 2 : AccountsView { }
                     if root.current-view == 3 : SettingsView { }
+                    if root.current-view == 4 : ModrinthView { }
                 }
             }
         }

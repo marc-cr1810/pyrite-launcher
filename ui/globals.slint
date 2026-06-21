@@ -105,6 +105,17 @@ export struct VersionItem {
     kind: string,      // "release" / "snapshot" / loader version
 }
 
+// One Modrinth search result (modpack / mod / resource pack / shader).
+export struct ModrinthHit {
+    project-id: string,
+    slug: string,
+    title: string,
+    description: string,
+    author: string,
+    downloads: string,   // pre-formatted ("1.2M")
+    icon: image,         // decoded thumbnail, empty until fetched
+}
+
 export struct JavaRuntimeItem {
     major: int,
     name: string,
@@ -221,6 +232,23 @@ export global Logic {
     callback create-backup(string /* id */);
     callback restore-backup(string /* id */, string /* filename */);
     callback delete-backup(string /* id */, string /* filename */);
+
+    // --- Modrinth browse (shared by the Modrinth view + in-detail dialogs) ---
+    in property <[ModrinthHit]> modrinth-results;
+    in property <bool> modrinth-loading;
+    in property <string> modrinth-status;     // inline status / error / empty messaging
+    // kind: "modpack" | "mod" | "resourcepack" | "shader". instance-id is "" for
+    // modpacks (no version/loader filter); otherwise the search is scoped to it.
+    callback modrinth-search(string /* query */, string /* kind */, string /* instance-id */);
+    // Install a browsed mod/pack into an existing instance.
+    callback modrinth-install(string /* instance-id */, string /* project-id */, string /* kind */);
+    // Create a new instance from a modpack: project-id, chosen name, icon-id
+    // ("" / builtin id / "custom" / "modpack" for the pack's own icon), memory-mb, jvm-args.
+    callback modrinth-create-instance(string, string, string, string, string);
+    // Import a local .mrpack file as a new instance (opens a native file picker).
+    callback import-mrpack();
+    // Export an existing instance to a .mrpack (opens a native save dialog).
+    callback export-mrpack(string /* id */);
 
     // --- Instance icon picker (shared by create + edit; one is open at a time) ---
     in property <[IconOption]> icon-options;       // built-in grid, set at startup

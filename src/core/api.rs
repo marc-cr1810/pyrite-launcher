@@ -797,6 +797,8 @@ pub struct ModrinthSearchHit {
     pub author: String,
     #[serde(rename = "latest_version")]
     pub latest_version: Option<String>,
+    #[serde(rename = "icon_url")]
+    pub icon_url: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -809,6 +811,13 @@ pub struct ModrinthVersionFile {
     pub url: String,
     pub filename: String,
     pub primary: bool,
+    #[serde(default)]
+    pub hashes: ModrinthFileHashes,
+}
+
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct ModrinthFileHashes {
+    pub sha1: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
