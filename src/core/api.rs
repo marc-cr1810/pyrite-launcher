@@ -888,6 +888,10 @@ pub struct ModrinthProject {
 #[derive(Deserialize, Debug, Clone)]
 pub struct ModrinthGalleryImage {
     pub url: String,
+    /// Full-resolution original (`url` is a resized thumbnail). Falls back to
+    /// `url` when absent.
+    #[serde(default)]
+    pub raw_url: Option<String>,
     #[serde(default)]
     pub featured: bool,
     #[serde(default)]

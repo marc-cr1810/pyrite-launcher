@@ -114,12 +114,12 @@ export component ModrinthDetailPane inherits VerticalLayout {
                 viewport-height: 116px;
                 HorizontalLayout {
                     spacing: 8px;
-                    for img in Logic.modrinth-detail.gallery : Rectangle {
+                    for img[idx] in Logic.modrinth-detail.gallery : Rectangle {
                         width: 206px; height: 116px; border-radius: Theme.radius-sm; background: Theme.surface; clip: true;
                         Image { width: 100%; height: 100%; source: img; image-fit: contain; }
                         gal-touch := TouchArea {
                             mouse-cursor: pointer;
-                            clicked => { Lightbox.show(img, ""); }
+                            clicked => { Lightbox.show(Logic.modrinth-detail.gallery, Logic.modrinth-detail.gallery-titles, idx); }
                         }
                     }
                 }

@@ -45,7 +45,11 @@ fn populate(ui: &MainWindow, state: &AppState, id: &str) {
         &inst.path.join("shaderpacks"),
         &shaderpacks,
     ));
-    logic.set_inst_screenshots(convert::screenshots_model(&inst.path, &screenshots));
+    let (shots_model, shot_images, shot_captions) =
+        convert::screenshots_model(&inst.path, &screenshots);
+    logic.set_inst_screenshots(shots_model);
+    logic.set_inst_screenshot_images(shot_images);
+    logic.set_inst_screenshot_captions(shot_captions);
     logic.set_inst_mods(convert::mods_model(&mods));
     logic.set_inst_backups(convert::backups_model(&inst.path, &backups));
     logic.set_inst_supports_mods(loader.is_some());

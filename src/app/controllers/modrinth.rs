@@ -449,11 +449,12 @@ pub fn open_detail(state: &AppState, weak: &Weak<MainWindow>, project_id: String
         };
         let versions = vers.unwrap_or_default();
 
-        // Icon + gallery image urls to fetch lazily.
+        // Icon + gallery image urls to fetch lazily. Prefer each gallery image's
+        // full-resolution `raw_url`; `url` is only a 350px thumbnail.
         let gallery_urls: Vec<String> = project
             .gallery
             .iter()
-            .map(|g| g.url.clone())
+            .map(|g| g.raw_url.clone().unwrap_or_else(|| g.url.clone()))
             .chain(project.icon_url.clone())
             .collect();
 

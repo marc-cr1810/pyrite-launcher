@@ -498,7 +498,12 @@ pub fn assets_model(dir: &Path, assets: &[AssetInfo]) -> ModelRc<AssetItem> {
     ModelRc::new(VecModel::from(items))
 }
 
-pub fn screenshots_model(instance_path: &Path, shots: &[ScreenshotInfo]) -> ModelRc<ScreenshotItem> {
+/// Build the screenshot list plus parallel `[image]` / `[caption]` models for the
+/// full-screen viewer (so it can page through shots without re-loading them).
+pub fn screenshots_model(
+    instance_path: &Path,
+    shots: &[ScreenshotInfo],
+) -> (ModelRc<ScreenshotItem>, ModelRc<Image>, ModelRc<SharedString>) {
     let dir = instance_path.join("screenshots");
     let items: Vec<ScreenshotItem> = shots
         .iter()
@@ -509,7 +514,13 @@ pub fn screenshots_model(instance_path: &Path, shots: &[ScreenshotInfo]) -> Mode
             image: Image::load_from_path(&dir.join(&s.filename)).unwrap_or_default(),
         })
         .collect();
-    ModelRc::new(VecModel::from(items))
+    let images: Vec<Image> = items.iter().map(|i| i.image.clone()).collect();
+    let captions: Vec<SharedString> = items.iter().map(|i| i.filename.clone()).collect();
+    (
+        ModelRc::new(VecModel::from(items)),
+        ModelRc::new(VecModel::from(images)),
+        ModelRc::new(VecModel::from(captions)),
+    )
 }
 
 /// Parse the `backup_YYYYMMDD_HHMMSS.zip` timestamp into a friendly date, or
@@ -621,10 +632,17 @@ pub fn modrinth_detail_model(data: &ModrinthDetailData, state: &AppState) -> Mod
     let p = &data.project;
     let icon_url = p.icon_url.clone().unwrap_or_default();
 
+    // Use each image's full-resolution `raw_url` (the API's `url` is a 350px
+    // thumbnail) so both the strip and the full-screen viewer stay crisp.
     let gallery: Vec<Image> = p
         .gallery
         .iter()
-        .map(|g| modrinth_gallery_image(state, &g.url))
+        .map(|g| modrinth_gallery_image(state, g.raw_url.as_deref().unwrap_or(&g.url)))
+        .collect();
+    let gallery_titles: Vec<SharedString> = p
+        .gallery
+        .iter()
+        .map(|g| g.title.clone().unwrap_or_default().into())
         .collect();
 
     let version_labels: Vec<SharedString> = data
@@ -663,6 +681,7 @@ pub fn modrinth_detail_model(data: &ModrinthDetailData, state: &AppState) -> Mod
         discord_url: p.discord_url.clone().unwrap_or_default().into(),
         page_url: page_url.into(),
         gallery: ModelRc::new(VecModel::from(gallery)),
+        gallery_titles: ModelRc::new(VecModel::from(gallery_titles)),
         version_labels: ModelRc::new(VecModel::from(version_labels)),
         version_ids: ModelRc::new(VecModel::from(version_ids)),
     }

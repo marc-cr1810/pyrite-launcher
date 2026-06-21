@@ -134,6 +134,7 @@ export struct ModrinthDetail {
     discord-url: string,
     page-url: string,    // modrinth.com project page
     gallery: [image],    // decoded gallery images, fill in as they arrive
+    gallery-titles: [string], // parallel captions for the gallery images
     // Parallel arrays: picker labels and the version ids they map to.
     version-labels: [string],
     version-ids: [string],
@@ -152,17 +153,39 @@ export struct LogLine {
     level: string,     // "error" / "warn" / "info" / "plain"
 }
 
-// Full-screen image viewer state. Any view can call `show(img, caption)` to pop
-// a clicked thumbnail (screenshot, modpack gallery, …) up at full size; the
-// overlay itself lives once at the top level in main.slint.
+// Full-screen image viewer state. Any view calls `show(images, captions, index)`
+// to pop a clicked thumbnail up at full size, with prev/next over the supplied
+// ordered list. The overlay itself lives once at the top level in main.slint.
 export global Lightbox {
-    in-out property <image> image;
-    in-out property <string> caption;
+    in-out property <[image]> images;
+    in-out property <[string]> captions;
+    in-out property <int> index: 0;
     in-out property <bool> open: false;
-    public function show(img: image, label: string) {
-        self.image = img;
-        self.caption = label;
+    // Default-constructed empty image, used when the index is out of range.
+    property <image> empty-image;
+
+    // Currently shown image/caption, guarded against an out-of-range index.
+    out property <image> current: root.index >= 0 && root.index < root.images.length
+        ? root.images[root.index] : root.empty-image;
+    out property <string> current-caption: root.index >= 0 && root.index < root.captions.length
+        ? root.captions[root.index] : "";
+    out property <bool> has-multiple: root.images.length > 1;
+
+    public function show(imgs: [image], caps: [string], i: int) {
+        self.images = imgs;
+        self.captions = caps;
+        self.index = i;
         self.open = true;
+    }
+    public function next() {
+        if self.images.length > 0 {
+            self.index = Math.mod(self.index + 1, self.images.length);
+        }
+    }
+    public function prev() {
+        if self.images.length > 0 {
+            self.index = Math.mod(self.index - 1 + self.images.length, self.images.length);
+        }
     }
     public function close() {
         self.open = false;
@@ -250,6 +273,9 @@ export global Logic {
     in property <[AssetItem]> inst-resourcepacks;
     in property <[AssetItem]> inst-shaderpacks;
     in property <[ScreenshotItem]> inst-screenshots;
+    // Parallel arrays (full-res images + filenames) for the full-screen viewer.
+    in property <[image]> inst-screenshot-images;
+    in property <[string]> inst-screenshot-captions;
     in property <[ModItem]> inst-mods;
     in property <[BackupItem]> inst-backups;
     in property <bool> inst-supports-mods;     // instance has a mod loader
