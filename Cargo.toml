@@ -30,6 +30,10 @@ arboard = { version = "3", features = ["wayland-data-control"] }
 rfd = "0.14"
 # System RAM detection for the memory slider; no per-process refresh needed.
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
+# Secure storage for Microsoft auth tokens in the OS keyring: Credential Manager
+# on Windows, Secret Service on Linux, Keychain on macOS. Falls back to the
+# config file when no backend is available (see core::secrets).
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
 [build-dependencies]
 slint-build = "1.16"

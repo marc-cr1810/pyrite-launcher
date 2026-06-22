@@ -34,6 +34,9 @@ pub fn refresh_summary(ui: &MainWindow, config: &Config, state: &AppState) {
     logic.set_active_account_initial(convert::initial(&account_name));
     logic.set_active_account_color(convert::avatar_color(account_uuid));
     logic.set_active_account_avatar(avatars::image_for(state, account_uuid));
+    // Larger body render for the Accounts hero panel (fetched lazily).
+    logic.set_active_account_body(avatars::body_image_for(state, account_uuid));
+    avatars::ensure_body(state, &ui.as_weak(), account_uuid.to_string());
 
     let mut inst_name = String::new();
     let mut inst_version = String::new();
@@ -103,6 +106,11 @@ pub fn refresh_all(ui: &MainWindow, state: &AppState) {
 
 pub fn set_status(ui: &MainWindow, text: impl Into<slint::SharedString>) {
     ui.global::<Logic>().set_status_text(text.into());
+}
+
+/// Set (or clear, with "") the inline error message on the Accounts page.
+pub fn set_account_error(ui: &MainWindow, text: impl Into<slint::SharedString>) {
+    ui.global::<Logic>().set_account_error(text.into());
 }
 
 pub fn set_busy(ui: &MainWindow, busy: bool) {

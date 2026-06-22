@@ -10,6 +10,7 @@
 //! frontend; nothing in this module depends on it.
 
 pub mod config;
+pub mod secrets;
 pub mod api;
 pub mod downloader;
 pub mod launcher;

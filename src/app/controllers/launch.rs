@@ -108,7 +108,7 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
         // Refresh the Microsoft session if its token has expired, so launches
         // don't silently fail with stale credentials.
         status(&weak, "Checking account session…");
-        let account = match crate::app::controllers::accounts::refresh_if_needed(&state, &account)
+        let account = match crate::app::controllers::accounts::refresh_if_needed(&state, &account, false)
             .await
         {
             Ok(a) => a,

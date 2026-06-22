@@ -1,5 +1,12 @@
 import { Theme, Logic, Icons, AccountItem } from "../globals.slint";
-import { Card, PButton, Avatar, Badge, EmptyState, Dialog } from "../components.slint";
+import {
+    Card,
+    PButton,
+    Avatar,
+    Badge,
+    EmptyState,
+    Dialog,
+} from "../components.slint";
 import { ScrollView, LineEdit } from "std-widgets.slint";
 
 export component AccountsView inherits Rectangle {
@@ -7,99 +14,239 @@ export component AccountsView inherits Rectangle {
     property <string> pending-uuid;
     property <string> pending-name;
 
-    VerticalLayout {
+    // Map a status string to a theme color so dot/label follow the active theme.
+    function status-color(status: string) -> color {
+        return status == "online" ? Theme.success : status == "expiring" ? Theme.warning : status == "expired" ? Theme.error : Theme.text-muted;
+    }
+
+    HorizontalLayout {
         padding: 24px;
         spacing: 18px;
 
-        HorizontalLayout {
-            Rectangle { }
-            PButton {
-                text: "+ Microsoft";
-                primary: true;
-                clicked => { Logic.start-microsoft(); }
-            }
-        }
-
-        // Add offline row
+        // ---- Hero panel: the active account ----
         Card {
-            height: 70px;
-            HorizontalLayout {
-                padding: 14px;
-                spacing: 10px;
-                offline-name := LineEdit {
-                    placeholder-text: "Offline username";
-                    width: 260px;
-                }
-                PButton {
-                    text: "Add offline";
-                    clicked => {
-                        if offline-name.text != "" {
-                            Logic.add-offline(offline-name.text);
-                            offline-name.text = "";
+            width: 260px;
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+                alignment: start;
+
+                if Logic.active-account-name != "": VerticalLayout {
+                    spacing: 14px;
+                    // Full-body skin render (falls back to the large monogram /
+                    // head avatar until the body image loads).
+                    Rectangle {
+                        height: 200px;
+                        if Logic.active-account-body.width > 0: Image {
+                            height: 100%;
+                            source: Logic.active-account-body;
+                            image-fit: contain;
+                            image-rendering: pixelated;
+                        }
+                        if Logic.active-account-body.width == 0: Avatar {
+                            initial: Logic.active-account-initial;
+                            tint: Logic.active-account-color;
+                            photo: Logic.active-account-avatar;
+                            size: 96px;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text {
+                            text: Logic.active-account-name;
+                            color: Theme.text;
+                            font-size: 18px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: "Active profile";
+                            color: Theme.text-muted;
+                            font-size: 12px;
+                            horizontal-alignment: center;
                         }
                     }
                 }
-                Rectangle { }
+                if Logic.active-account-name == "": EmptyState {
+                    icon: Icons.user;
+                    title: "No active account";
+                    subtitle: "Add or select an account to play.";
+                }
             }
         }
 
-        Card {
-            vertical-stretch: 1;
-            if Logic.accounts.length == 0 : EmptyState {
-                icon: Icons.user;
-                title: "No accounts yet";
-                subtitle: "Add a Microsoft account to play online, or an offline name for local play.";
-            }
-            if Logic.accounts.length > 0 : ScrollView {
+        // ---- Right column: actions + account list ----
+        VerticalLayout {
+            spacing: 18px;
+            horizontal-stretch: 1;
+
+            // Add-account header: offline name + "Add offline" on the left,
+            // "+ Microsoft" on the right.
+            Card {
+                height: Logic.account-error != "" ? 96px : 70px;
                 VerticalLayout {
-                    padding: 8px;
+                    padding: 14px;
                     spacing: 6px;
-                    for acc in Logic.accounts : Rectangle {
-                        height: 60px;
-                        border-radius: Theme.radius-sm;
-                        background: acc.active ? Theme.surface-alt : transparent;
-                        border-width: 1px;
-                        border-color: acc.active ? Theme.accent : transparent;
-                        HorizontalLayout {
-                            padding: 12px;
-                            spacing: 12px;
-                            VerticalLayout {
-                                alignment: center;
-                                Avatar { initial: acc.initial; tint: acc.avatar-color; size: 38px; selected: acc.active; photo: acc.avatar; }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        offline-name := LineEdit {
+                            placeholder-text: "Offline username";
+                            width: 260px;
+                            edited => {
+                                Logic.account-error = "";
                             }
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: 3px;
-                                horizontal-stretch: 1;
-                                Text { text: acc.username; color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide; }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    alignment: start;
-                                    Badge {
-                                        text: acc.kind;
-                                        tint: acc.kind == "Microsoft" ? Theme.accent : Theme.text-muted;
+                            accepted => {
+                                Logic.add-offline(self.text);
+                            }
+                        }
+
+                        PButton {
+                            text: "Add offline";
+                            clicked => {
+                                Logic.add-offline(offline-name.text);
+                            }
+                        }
+
+                        Rectangle { }
+
+                        PButton {
+                            text: "Microsoft";
+                            icon: Icons.sign-in;
+                            primary: true;
+                            clicked => {
+                                Logic.start-microsoft();
+                            }
+                        }
+                    }
+
+                    if Logic.account-error != "": Text {
+                        text: Logic.account-error;
+                        color: Theme.error;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            Card {
+                vertical-stretch: 1;
+                if Logic.accounts.length == 0: EmptyState {
+                    icon: Icons.user;
+                    title: "No accounts yet";
+                    subtitle: "Add a Microsoft account to play online, or an offline name for local play.";
+                }
+                if Logic.accounts.length > 0: ScrollView {
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 6px;
+                        for acc in Logic.accounts: Rectangle {
+                            height: 60px;
+                            border-radius: Theme.radius-sm;
+                            background: acc.active ? Theme.surface-alt : (row-touch.has-hover ? Theme.surface-hover : transparent);
+                            border-width: 1px;
+                            border-color: acc.active ? Theme.accent : transparent;
+                            animate background { duration: 120ms; }
+
+                            // Clicking the row body selects the account; the
+                            // action buttons sit on top with their own areas.
+                            row-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    Logic.select-account(acc.uuid);
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding: 12px;
+                                spacing: 12px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Avatar {
+                                        initial: acc.initial;
+                                        tint: acc.avatar-color;
+                                        size: 38px;
+                                        selected: acc.active;
+                                        photo: acc.avatar;
                                     }
-                                    if acc.active : Text { text: "● active"; color: Theme.success; font-size: 11px; vertical-alignment: center; }
                                 }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                PButton {
-                                    text: acc.active ? "Active" : "Use";
-                                    primary: !acc.active;
-                                    enabled: !acc.active;
-                                    clicked => { Logic.select-account(acc.uuid); }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 3px;
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        text: acc.username;
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Badge {
+                                            text: acc.kind;
+                                            tint: acc.kind == "Microsoft" ? Theme.accent : Theme.text-muted;
+                                        }
+
+                                        HorizontalLayout {
+                                            spacing: 5px;
+                                            Rectangle {
+                                                width: 7px;
+                                                height: 7px;
+                                                border-radius: 3.5px;
+                                                background: root.status-color(acc.status);
+                                                y: (parent.height - self.height) / 2;
+                                            }
+
+                                            Text {
+                                                text: acc.status-label;
+                                                color: root.status-color(acc.status);
+                                                font-size: 11px;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                PButton {
-                                    text: "Remove";
-                                    danger: true;
-                                    clicked => {
-                                        root.pending-uuid = acc.uuid;
-                                        root.pending-name = acc.username;
-                                        root.confirm-open = true;
+                                // Refresh the Microsoft session.
+                                if acc.kind == "Microsoft": VerticalLayout {
+                                    alignment: center;
+                                    PButton {
+                                        text: "";
+                                        icon: Icons.refresh;
+                                        ghost: true;
+                                        clicked => {
+                                            Logic.refresh-account(acc.uuid);
+                                        }
+                                    }
+                                }
+                                // Re-login when the session has expired.
+                                if acc.needs-attention: VerticalLayout {
+                                    alignment: center;
+                                    PButton {
+                                        text: "Re-login";
+                                        icon: Icons.sign-in;
+                                        primary: true;
+                                        clicked => {
+                                            Logic.relogin-account(acc.uuid);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    PButton {
+                                        text: "";
+                                        icon: Icons.trash;
+                                        danger: true;
+                                        clicked => {
+                                            root.pending-uuid = acc.uuid;
+                                            root.pending-name = acc.username;
+                                            root.confirm-open = true;
+                                        }
                                     }
                                 }
                             }
@@ -111,19 +258,36 @@ export component AccountsView inherits Rectangle {
     }
 
     // ---- Remove confirmation ----
-    if root.confirm-open : Dialog {
+    if root.confirm-open: Dialog {
         dialog-width: 400px;
-        closed => { root.confirm-open = false; }
-        Text { text: "Remove account?"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        closed => {
+            root.confirm-open = false;
+        }
+        Text {
+            text: "Remove account?";
+            color: Theme.text;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
         Text {
             text: "“" + root.pending-name + "” will be removed from the launcher.";
-            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+            color: Theme.text-muted;
+            font-size: 13px;
+            wrap: word-wrap;
         }
+
         HorizontalLayout {
             alignment: end;
             spacing: 10px;
             padding-top: 8px;
-            PButton { text: "Cancel"; clicked => { root.confirm-open = false; } }
+            PButton {
+                text: "Cancel";
+                clicked => {
+                    root.confirm-open = false;
+                }
+            }
+
             PButton {
                 text: "Remove";
                 danger: true;
@@ -136,23 +300,42 @@ export component AccountsView inherits Rectangle {
     }
 
     // ---- Microsoft device-code dialog ----
-    if Logic.ms-dialog-open : Dialog {
+    if Logic.ms-dialog-open: Dialog {
         dialog-width: 440px;
-        closed => { Logic.cancel-microsoft(); }
-        Text { text: "Sign in with Microsoft"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        closed => {
+            Logic.cancel-microsoft();
+        }
+        Text {
+            text: "Sign in with Microsoft";
+            color: Theme.text;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
         HorizontalLayout {
             spacing: 8px;
-            Text { text: "1. Open this page in your browser:"; color: Theme.text-muted; font-size: 13px; vertical-alignment: center; }
+            Text {
+                text: "1. Open this page in your browser:";
+                color: Theme.text-muted;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+
             PButton {
                 text: "Open";
                 height: 28px;
-                clicked => { Logic.open-url(Logic.ms-verification-uri); }
+                clicked => {
+                    Logic.open-url(Logic.ms-verification-uri);
+                }
             }
         }
+
         uri-touch := TouchArea {
             height: link-text.preferred-height;
             mouse-cursor: pointer;
-            clicked => { Logic.open-url(Logic.ms-verification-uri); }
+            clicked => {
+                Logic.open-url(Logic.ms-verification-uri);
+            }
             link-text := Text {
                 text: Logic.ms-verification-uri;
                 color: uri-touch.has-hover ? Theme.accent-hover : Theme.accent;
@@ -160,7 +343,13 @@ export component AccountsView inherits Rectangle {
                 font-weight: 600;
             }
         }
-        Text { text: "2. Enter this code:"; color: Theme.text-muted; font-size: 13px; }
+
+        Text {
+            text: "2. Enter this code:";
+            color: Theme.text-muted;
+            font-size: 13px;
+        }
+
         HorizontalLayout {
             spacing: 8px;
             Rectangle {
@@ -170,26 +359,38 @@ export component AccountsView inherits Rectangle {
                 background: Theme.surface-alt;
                 Text {
                     text: Logic.ms-user-code;
-                    color: Theme.text; font-size: 24px; font-weight: 700;
+                    color: Theme.text;
+                    font-size: 24px;
+                    font-weight: 700;
                     font-family: "monospace";
                 }
             }
+
             PButton {
                 text: "Copy";
                 height: 48px;
-                clicked => { Logic.copy-code(Logic.ms-user-code); }
+                clicked => {
+                    Logic.copy-code(Logic.ms-user-code);
+                }
             }
         }
+
         Text {
             text: Logic.ms-message;
             color: Logic.ms-active ? Theme.warning : Theme.text-muted;
             font-size: 12px;
             wrap: word-wrap;
         }
+
         HorizontalLayout {
             alignment: end;
             padding-top: 8px;
-            PButton { text: "Cancel"; clicked => { Logic.cancel-microsoft(); } }
+            PButton {
+                text: "Cancel";
+                clicked => {
+                    Logic.cancel-microsoft();
+                }
+            }
         }
     }
 }

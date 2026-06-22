@@ -12,7 +12,7 @@ use crate::app::icons;
 use crate::app::state::AppState;
 use crate::core::api::{ModrinthProject, ModrinthSearchHit, ModrinthVersion};
 use crate::core::assets::{AssetInfo, ScreenshotInfo, WorldInfo};
-use crate::core::config::{AccountType, Config};
+use crate::core::config::{Account, AccountType, Config};
 use crate::core::instance::{Instance, InstanceMod};
 use crate::core::storage::{self, StorageReport};
 use crate::{
@@ -160,22 +160,58 @@ pub fn avatar_color(key: &str) -> Color {
     Color::from_rgb_u8(r, g, b)
 }
 
+/// Token-health for one account, used to drive the status dot/label and the
+/// re-login affordance. Returns `(status, label, needs_attention)` where
+/// `status` is one of "online"/"expiring"/"expired"/"offline" (the UI maps it
+/// to a theme color).
+pub fn account_status(account: &Account) -> (&'static str, String, bool) {
+    let ms = match (&account.account_type, &account.microsoft_auth) {
+        (AccountType::Microsoft, Some(ms)) => ms,
+        // Offline accounts (or Microsoft with no stored tokens) have no session.
+        (AccountType::Microsoft, None) => {
+            return ("expired", "Session expired".into(), true)
+        }
+        _ => return ("offline", "Offline".into(), false),
+    };
+
+    match ms.expires_at {
+        Some(exp) => {
+            let now = chrono::Utc::now();
+            if exp <= now {
+                ("expired", "Session expired".into(), true)
+            } else if exp <= now + chrono::Duration::minutes(10) {
+                ("expiring", "Refreshing soon".into(), false)
+            } else {
+                ("online", "Signed in".into(), false)
+            }
+        }
+        // No expiry recorded: treat as needing a refresh on next use.
+        None => ("expiring", "Refreshing soon".into(), false),
+    }
+}
+
 pub fn accounts_model(config: &Config, state: &AppState) -> ModelRc<AccountItem> {
     let active = config.active_account_uuid.clone();
     let items: Vec<AccountItem> = config
         .accounts
         .iter()
-        .map(|a| AccountItem {
-            uuid: a.uuid.clone().into(),
-            username: a.username.clone().into(),
-            kind: match a.account_type {
-                AccountType::Microsoft => "Microsoft".into(),
-                AccountType::Offline => "Offline".into(),
-            },
-            active: active.as_deref() == Some(a.uuid.as_str()),
-            initial: initial(&a.username),
-            avatar_color: avatar_color(&a.uuid),
-            avatar: avatars::image_for(state, &a.uuid),
+        .map(|a| {
+            let (status, status_label, needs_attention) = account_status(a);
+            AccountItem {
+                uuid: a.uuid.clone().into(),
+                username: a.username.clone().into(),
+                kind: match a.account_type {
+                    AccountType::Microsoft => "Microsoft".into(),
+                    AccountType::Offline => "Offline".into(),
+                },
+                active: active.as_deref() == Some(a.uuid.as_str()),
+                initial: initial(&a.username),
+                avatar_color: avatar_color(&a.uuid),
+                avatar: avatars::image_for(state, &a.uuid),
+                status: status.into(),
+                status_label: status_label.into(),
+                needs_attention,
+            }
         })
         .collect();
     ModelRc::new(VecModel::from(items))

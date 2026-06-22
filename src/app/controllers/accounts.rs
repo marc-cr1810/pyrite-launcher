@@ -14,9 +14,14 @@ use crate::MainWindow;
 
 pub fn add_offline(state: &AppState, weak: &Weak<MainWindow>, username: String) {
     let username = username.trim().to_string();
-    if username.is_empty() {
+
+    // Validate against Minecraft's offline username rules so the launcher fails
+    // loudly (inline) rather than silently accepting names the game rejects.
+    if let Err(msg) = validate_offline_username(state, &username) {
+        set_account_error(weak, msg);
         return;
     }
+
     let account = Account {
         uuid: Uuid::new_v4().simple().to_string(),
         username,
@@ -24,7 +29,39 @@ pub fn add_offline(state: &AppState, weak: &Weak<MainWindow>, username: String) 
         microsoft_auth: None,
     };
     state.config.lock().unwrap().add_account(account);
+    set_account_error(weak, "");
     refresh(state, weak);
+}
+
+/// Check an offline username: 3–16 chars of `[A-Za-z0-9_]`, not already added.
+fn validate_offline_username(state: &AppState, username: &str) -> Result<(), &'static str> {
+    if username.is_empty() {
+        return Err("Enter a username.");
+    }
+    let len = username.chars().count();
+    if !(3..=16).contains(&len) {
+        return Err("Usernames must be 3–16 characters.");
+    }
+    if !username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err("Use only letters, numbers and underscores.");
+    }
+    let exists = state
+        .config
+        .lock()
+        .unwrap()
+        .accounts
+        .iter()
+        .any(|a| a.username.eq_ignore_ascii_case(username));
+    if exists {
+        return Err("That username is already added.");
+    }
+    Ok(())
+}
+
+/// Set (or clear) the Accounts-page inline error from any thread.
+fn set_account_error(weak: &Weak<MainWindow>, msg: impl Into<String>) {
+    let msg = msg.into();
+    let _ = weak.upgrade_in_event_loop(move |ui| ui::set_account_error(&ui, msg));
 }
 
 pub fn select(state: &AppState, weak: &Weak<MainWindow>, uuid: String) {
@@ -63,7 +100,19 @@ pub fn copy_code(text: String) {
     }
 }
 
+/// Begin a fresh Microsoft device-code login.
 pub fn start_microsoft(state: &AppState, weak: &Weak<MainWindow>) {
+    run_microsoft(state, weak, None);
+}
+
+/// Re-run the Microsoft login for an existing (expired) account. The new tokens
+/// replace the account by UUID; if the user signs into a *different* account,
+/// the stale one is dropped.
+pub fn relogin_account(state: &AppState, weak: &Weak<MainWindow>, uuid: String) {
+    run_microsoft(state, weak, Some(uuid));
+}
+
+fn run_microsoft(state: &AppState, weak: &Weak<MainWindow>, expected_uuid: Option<String>) {
     state.ms_cancel.store(false, Ordering::SeqCst);
     let state = state.clone();
     let weak = weak.clone();
@@ -131,7 +180,16 @@ pub fn start_microsoft(state: &AppState, weak: &Weak<MainWindow>) {
                             ),
                         }),
                     };
-                    state.config.lock().unwrap().add_account(account);
+                    {
+                        let mut cfg = state.config.lock().unwrap();
+                        // Re-login into a different account: discard the stale one.
+                        if let Some(old) =
+                            expected_uuid.as_deref().filter(|old| *old != account.uuid)
+                        {
+                            cfg.remove_account(old);
+                        }
+                        cfg.add_account(account);
+                    }
                     refresh(&state, &weak);
                     ui_ms(&weak, false, false, "", "", "");
                     return;
@@ -146,19 +204,59 @@ pub fn start_microsoft(state: &AppState, weak: &Weak<MainWindow>) {
     });
 }
 
+/// Refresh a Microsoft account's token now, regardless of expiry, and report the
+/// outcome on the Accounts page. Offline accounts are a no-op. Triggered by the
+/// per-account "refresh" button.
+pub fn refresh_account(state: &AppState, weak: &Weak<MainWindow>, uuid: String) {
+    let account = match state
+        .config
+        .lock()
+        .unwrap()
+        .accounts
+        .iter()
+        .find(|a| a.uuid == uuid)
+        .cloned()
+    {
+        Some(a) => a,
+        None => return,
+    };
+    if account.account_type != AccountType::Microsoft {
+        return;
+    }
+
+    let state = state.clone();
+    let weak = weak.clone();
+    set_account_error(&weak, "Refreshing session…");
+    state.rt.clone().spawn(async move {
+        match refresh_if_needed(&state, &account, true).await {
+            Ok(_) => {
+                refresh(&state, &weak);
+                set_account_error(&weak, "");
+            }
+            Err(e) => set_account_error(&weak, format!("Refresh failed: {e}. Try re-login.")),
+        }
+    });
+}
+
 /// Ensure a Microsoft account's token is valid, refreshing it if it has expired
-/// (or is within 60s of doing so). Returns the (possibly updated) account and
-/// persists any refresh to config. Offline accounts are returned unchanged.
-pub async fn refresh_if_needed(state: &AppState, account: &Account) -> Result<Account, String> {
+/// (or is within 60s of doing so), or unconditionally when `force` is set.
+/// Returns the (possibly updated) account and persists any refresh to config.
+/// Offline accounts are returned unchanged.
+pub async fn refresh_if_needed(
+    state: &AppState,
+    account: &Account,
+    force: bool,
+) -> Result<Account, String> {
     let ms = match (&account.account_type, &account.microsoft_auth) {
         (AccountType::Microsoft, Some(ms)) => ms,
         _ => return Ok(account.clone()),
     };
 
-    let needs_refresh = match ms.expires_at {
-        Some(exp) => exp <= chrono::Utc::now() + chrono::Duration::seconds(60),
-        None => true,
-    };
+    let needs_refresh = force
+        || match ms.expires_at {
+            Some(exp) => exp <= chrono::Utc::now() + chrono::Duration::seconds(60),
+            None => true,
+        };
     if !needs_refresh {
         return Ok(account.clone());
     }

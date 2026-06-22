@@ -42,6 +42,16 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     }
     {
         let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_relogin_account(move |uuid| accounts::relogin_account(&st, &weak, uuid.to_string()));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_refresh_account(move |uuid| accounts::refresh_account(&st, &weak, uuid.to_string()));
+    }
+    {
+        let st = state.clone();
         logic.on_cancel_microsoft(move || accounts::cancel_microsoft(&st));
     }
     logic.on_open_url(move |url| accounts::open_url(url.to_string()));

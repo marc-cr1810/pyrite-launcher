@@ -102,8 +102,44 @@ impl Config {
         } else {
             Config::default()
         };
+        // Pull Microsoft tokens from the keyring into memory (and migrate any
+        // left over in the plaintext config). Re-save afterwards so a migrated
+        // config drops its inline tokens from disk.
+        let migrated = config.hydrate_secrets();
         config.migrate_and_initialize();
+        if migrated {
+            let _ = config.save();
+        }
         config
+    }
+
+    /// Reconcile in-memory Microsoft tokens with the OS keyring. For each
+    /// Microsoft account: if its tokens are missing (the normal case once
+    /// secrets live in the keyring) load them from there; if they are still
+    /// present inline (an older plaintext config) move them into the keyring and
+    /// signal that the config should be re-saved to strip them from disk.
+    ///
+    /// No-op when no keyring backend is available — tokens then stay in the
+    /// config file as before. Returns whether a migration occurred.
+    fn hydrate_secrets(&mut self) -> bool {
+        if !crate::core::secrets::available() {
+            return false;
+        }
+        let mut migrated = false;
+        for acc in &mut self.accounts {
+            if acc.account_type != AccountType::Microsoft {
+                continue;
+            }
+            match &acc.microsoft_auth {
+                Some(auth) => {
+                    if crate::core::secrets::store(&acc.uuid, auth) {
+                        migrated = true;
+                    }
+                }
+                None => acc.microsoft_auth = crate::core::secrets::load(&acc.uuid),
+            }
+        }
+        migrated
     }
 
     pub fn migrate_and_initialize(&mut self) {
@@ -129,7 +165,26 @@ impl Config {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let content = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        // When a keyring backend exists, move Microsoft tokens into it and write
+        // a copy of the config with those secret fields stripped from disk. Any
+        // account whose tokens fail to store keeps them inline so the session
+        // isn't lost. Without a keyring, serialize as-is (config-file fallback).
+        let content = if crate::core::secrets::available() {
+            let mut redacted = self.clone();
+            for acc in &mut redacted.accounts {
+                if acc.account_type != AccountType::Microsoft {
+                    continue;
+                }
+                if let Some(auth) = &acc.microsoft_auth
+                    && crate::core::secrets::store(&acc.uuid, auth)
+                {
+                    acc.microsoft_auth = None;
+                }
+            }
+            serde_json::to_string_pretty(&redacted).map_err(|e| e.to_string())?
+        } else {
+            serde_json::to_string_pretty(self).map_err(|e| e.to_string())?
+        };
         fs::write(path, content).map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -152,6 +207,8 @@ impl Config {
         if self.active_account_uuid.as_deref() == Some(uuid) {
             self.active_account_uuid = self.accounts.first().map(|acc| acc.uuid.clone());
         }
+        // Drop any keyring-held tokens for the removed account.
+        crate::core::secrets::delete(uuid);
         let _ = self.save();
     }
 }

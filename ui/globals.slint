@@ -12,6 +12,9 @@ export struct AccountItem {
     initial: string,       // first letter, for the monogram avatar
     avatar-color: color,   // stable color derived from the account
     avatar: image,         // player head (empty until fetched); monogram shows meanwhile
+    status: string,        // "online" / "expiring" / "expired" / "offline"
+    status-label: string,  // human-readable status, e.g. "Signed in"
+    needs-attention: bool, // true when the session is expired and needs re-login
 }
 
 export struct InstanceItem {
@@ -195,10 +198,8 @@ export global Lightbox {
     property <image> empty-image;
 
     // Currently shown image/caption, guarded against an out-of-range index.
-    out property <image> current: root.index >= 0 && root.index < root.images.length
-        ? root.images[root.index] : root.empty-image;
-    out property <string> current-caption: root.index >= 0 && root.index < root.captions.length
-        ? root.captions[root.index] : "";
+    out property <image> current: root.index >= 0 && root.index < root.images.length ? root.images[root.index] : root.empty-image;
+    out property <string> current-caption: root.index >= 0 && root.index < root.captions.length ? root.captions[root.index] : "";
     out property <bool> has-multiple: root.images.length > 1;
 
     public function show(imgs: [image], caps: [string], i: int) {
@@ -275,6 +276,9 @@ export global Icons {
     out property <string> timer: "\u{e492}";       // playtime
     out property <string> clock: "\u{e1a0}";       // clock-counter-clockwise (last played)
     out property <string> warning: "\u{e4e0}";
+    out property <string> trash: "\u{e4a6}";       // remove
+    out property <string> refresh: "\u{e096}";     // arrows-clockwise (refresh session)
+    out property <string> sign-in: "\u{e428}";     // re-login
 }
 
 // Single bridge between the UI and Rust: shared state (properties Rust pushes
@@ -285,6 +289,12 @@ export global Logic {
     callback select-account(string /* uuid */);
     callback remove-account(string /* uuid */);
     callback add-offline(string /* username */);
+    callback relogin-account(string /* uuid */);
+    callback refresh-account(string /* uuid */);
+    // Inline validation/error message shown on the Accounts page ("" = none).
+    in-out property <string> account-error;
+    // Larger body render of the active account for the Accounts hero panel.
+    in property <image> active-account-body;
     // Microsoft device-code login dialog
     in property <bool> ms-active;
     in-out property <bool> ms-dialog-open;
