@@ -186,6 +186,15 @@ export struct StorageItem {
     id: string,        // instance id ("" for caches), used by open-folder
 }
 
+// A pre-launch mod-set problem shown in the Play-view banner.
+export struct PreflightItem {
+    kind: string,       // "duplicate" | "missing-dependency"
+    message: string,    // human-readable explanation
+    fix-kind: string,   // "install-dep" | "disable-mod" | "" (no one-click fix)
+    fix-arg: string,    // query (install-dep) / filename (disable-mod)
+    fix-label: string,  // button text, e.g. "Install fabric-api"
+}
+
 // Full-screen image viewer state. Any view calls `show(images, captions, index)`
 // to pop a clicked thumbnail up at full size, with prev/next over the supplied
 // ordered list. The overlay itself lives once at the top level in main.slint.
@@ -465,6 +474,19 @@ export global Logic {
     in-out property <string> crash-report-path;     // "" when no crash-report file was found
     callback open-crash-report();                   // opens the crash-reports folder
     callback copy-crash-details();                  // copies title+description+solutions+excerpt
+    // One-click remedy for the diagnosed crash. crash-fix-kind == "" => no fix.
+    in-out property <string> crash-fix-kind;        // "memory"|"java"|"disable-mod"|"install-dep"
+    in-out property <string> crash-fix-label;       // button text
+    in-out property <string> crash-fix-arg;         // query / mod-name hint
+    in-out property <bool> crash-fixing;            // a fix is being applied
+    callback apply-crash-fix(string /* kind */, string /* arg */);
+
+    // --- Pre-flight conflict check (inline banner on the Play view) ---
+    in property <[PreflightItem]> preflight-issues;
+    in-out property <bool> preflight-visible;
+    in property <bool> preflight-fixing;            // a banner fix is in flight
+    callback preflight-fix(string /* fix-kind */, string /* fix-arg */);
+    callback dismiss-preflight();
 
     // --- Change an existing instance's Minecraft version / mod loader ---
     // id, game-version, loader ("" = Vanilla), loader-version ("" = recommended).

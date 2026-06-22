@@ -263,6 +263,46 @@ export component PlayView inherits VerticalLayout {
         font-size: 13px;
     }
 
+    // ---- Pre-flight conflict check (shown when the active instance's mod set
+    // has duplicates or missing dependencies; each issue may offer a fix) ----
+    if Logic.preflight-visible : Rectangle {
+        vertical-stretch: 0;
+        border-radius: Theme.radius;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.warning;
+        clip: true;
+        HorizontalLayout {
+            Rectangle { width: 4px; background: Theme.warning; }
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Icon { icon: Icons.warning; color: Theme.warning; font-size: 16px; }
+                    Text {
+                        text: "Before you play"; color: Theme.text; font-size: 15px; font-weight: 700;
+                        horizontal-stretch: 1; vertical-alignment: center;
+                    }
+                    PButton { text: "Dismiss"; ghost: true; height: 26px; clicked => { Logic.dismiss-preflight(); } }
+                }
+                for issue in Logic.preflight-issues : HorizontalLayout {
+                    spacing: 10px;
+                    Text {
+                        text: issue.message; color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+                        horizontal-stretch: 1; vertical-alignment: center;
+                    }
+                    if issue.fix-kind != "" : PButton {
+                        text: Logic.preflight-fixing ? "Working…" : issue.fix-label;
+                        height: 28px;
+                        enabled: !Logic.preflight-fixing;
+                        clicked => { Logic.preflight-fix(issue.fix-kind, issue.fix-arg); }
+                    }
+                }
+            }
+        }
+    }
+
     // ---- Progress ----
     if Logic.progress-active : VerticalLayout {
         // Pin to natural height; the log Card below absorbs the leftover space.
@@ -330,8 +370,16 @@ export component PlayView inherits VerticalLayout {
                 HorizontalLayout {
                     spacing: 8px;
                     padding-top: 2px;
+                    // One-click remedy, when the cause is specific enough to act on.
+                    if Logic.crash-fix-kind != "" : PButton {
+                        text: Logic.crash-fixing ? "Working…" : Logic.crash-fix-label;
+                        primary: true;
+                        height: 28px;
+                        enabled: !Logic.crash-fixing;
+                        clicked => { Logic.apply-crash-fix(Logic.crash-fix-kind, Logic.crash-fix-arg); }
+                    }
                     if Logic.crash-report-path != "" : PButton {
-                        text: "Open crash report"; height: 28px; clicked => { Logic.open-crash-report(); }
+                        text: "Open crash report"; ghost: true; height: 28px; clicked => { Logic.open-crash-report(); }
                     }
                     PButton { text: "Copy details"; ghost: true; height: 28px; clicked => { Logic.copy-crash-details(); } }
                     Rectangle { horizontal-stretch: 1; }

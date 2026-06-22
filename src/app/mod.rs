@@ -72,6 +72,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
     populate_icon_options(&window);
     ui::refresh_all(&window, &state);
     controllers::wire(&window, &state);
+    // Scan the initially-active instance for mod conflicts.
+    controllers::preflight::run(&state, &window.as_weak());
 
     // Flush the live game-log buffer into the UI on a fixed cadence. An active
     // repeating timer also keeps the event loop waking while the launcher is

@@ -194,22 +194,35 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
                 let game_dir = state.game_dir();
                 let inst_path = game_dir.join("instances").join(&instance.id);
                 let log_path = inst_path.join("logs").join("latest.log");
-                let log_content = std::fs::read_to_string(&log_path).unwrap_or_default();
 
-                // If there's no log content, check the memory log buffer
-                let log_content = if log_content.is_empty() {
-                    state.log_buf.lock().unwrap().join("\n")
-                } else {
-                    log_content
-                };
+                // Analyze the launcher's own error, the on-disk log, AND this
+                // run's captured output. The launcher rejects some failures (e.g.
+                // an incompatible Java version) before the process spawns, so the
+                // cause lives only in `e`; early JVM failures print to stderr
+                // before Minecraft writes latest.log, so they live only in the
+                // in-memory buffer; and a stale latest.log could mask either.
+                let file_log = std::fs::read_to_string(&log_path).unwrap_or_default();
+                let buf_log = state.log_buf.lock().unwrap().join("\n");
+                let log_content = format!("{e}\n{file_log}\n{buf_log}");
 
                 if let Some(analysis) = crate::core::crash_analyzer::analyze_crash(&inst_path, &log_content) {
+                    // Resolve the one-click remedy (if any) against this instance.
+                    let system_ram = crate::core::config::system_ram_mb()
+                        .unwrap_or(8192)
+                        .min(i32::MAX as u64) as i32;
+                    let (fix_kind, fix_label, fix_arg) =
+                        crate::app::controllers::crashfix::describe(&analysis.fix, &instance, system_ram);
+
                     let _ = weak.upgrade_in_event_loop(move |ui| {
                         let logic = ui.global::<Logic>();
                         logic.set_crash_title(analysis.title.into());
                         logic.set_crash_description(analysis.description.into());
                         logic.set_crash_category(analysis.category.into());
                         logic.set_crash_report_path(analysis.report_path.unwrap_or_default().into());
+                        logic.set_crash_fix_kind(fix_kind.into());
+                        logic.set_crash_fix_label(fix_label.into());
+                        logic.set_crash_fix_arg(fix_arg.into());
+                        logic.set_crash_fixing(false);
 
                         let solutions: Vec<slint::SharedString> =
                             analysis.possible_solutions.into_iter().map(|s| s.into()).collect();

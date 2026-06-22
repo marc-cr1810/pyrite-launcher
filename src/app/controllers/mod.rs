@@ -2,11 +2,13 @@
 use slint::ComponentHandle;
 
 pub mod accounts;
+pub mod crashfix;
 pub mod details;
 pub mod instances;
 pub mod launch;
 pub mod modrinth;
 pub mod modupdate;
+pub mod preflight;
 pub mod settings;
 pub mod storage;
 pub mod versions;
@@ -386,6 +388,26 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
                 );
             }
         });
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_apply_crash_fix(move |kind, arg| {
+            crashfix::apply(&st, &weak, kind.to_string(), arg.to_string());
+        });
+    }
+
+    // --- Pre-flight conflict check (Play view banner) ---
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_preflight_fix(move |fix_kind, fix_arg| {
+            preflight::fix(&st, &weak, fix_kind.to_string(), fix_arg.to_string());
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        logic.on_dismiss_preflight(move || preflight::dismiss(&weak));
     }
 
     // --- Settings ---

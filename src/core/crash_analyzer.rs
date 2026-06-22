@@ -1,6 +1,24 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 
+/// A machine-actionable remedy the launcher can apply with one click. The
+/// analyzer only names *what* to do; the controller resolves it against the
+/// actual instance (current memory, installed jars, Modrinth, …).
+#[derive(Debug, Clone, PartialEq)]
+pub enum CrashFix {
+    /// Raise the instance's max heap and relaunch. The controller computes the
+    /// new target from the current `-Xmx` and physical RAM.
+    IncreaseMemory,
+    /// Install a missing dependency. `query` is what to search Modrinth for;
+    /// `display` is a friendly name for the button/label.
+    InstallDependency { query: String, display: String },
+    /// Disable the offending mod jar, matched case-insensitively by `name_hint`
+    /// against installed filenames / mod ids.
+    DisableMod { name_hint: String },
+    /// Switch the instance to auto-detected Java and relaunch.
+    UseAutoJava,
+}
+
 #[derive(Debug, Clone)]
 pub struct CrashAnalysis {
     pub title: String,
@@ -14,6 +32,8 @@ pub struct CrashAnalysis {
     pub report_path: Option<String>,
     /// A few of the most relevant log/report lines, for the UI to show verbatim.
     pub excerpt: Vec<String>,
+    /// A one-click remedy, when the cause is specific enough to act on.
+    pub fix: Option<CrashFix>,
 }
 
 impl CrashAnalysis {
@@ -30,7 +50,13 @@ impl CrashAnalysis {
             category: category.to_string(),
             report_path: None,
             excerpt: Vec::new(),
+            fix: None,
         }
+    }
+
+    fn with_fix(mut self, fix: CrashFix) -> Self {
+        self.fix = Some(fix);
+        self
     }
 }
 
@@ -59,9 +85,11 @@ pub fn analyze_crash(instance_path: &Path, latest_log_content: &str) -> Option<C
 
 /// Match the combined crash text against known signatures, most specific first.
 fn classify(content: &str) -> Option<CrashAnalysis> {
-    // Signature A: Java version mismatch
+    // Signature A: Java version mismatch. The last form is the launcher's own
+    // pre-launch rejection (the game process never spawns in that case).
     if content.contains("UnsupportedClassVersionError")
         || content.contains("has been compiled by a more recent version of the Java Runtime")
+        || content.contains("Incompatible Java version! Game requires Java")
     {
         return Some(CrashAnalysis::new(
             "java",
@@ -72,7 +100,7 @@ fn classify(content: &str) -> Option<CrashAnalysis> {
                 "Select 'Auto-detect (Recommended)' in Settings to automatically download and run the correct Java version for each instance.".to_string(),
                 "If using a custom Java path, ensure it points to a compatible Java installation.".to_string(),
             ],
-        ));
+        ).with_fix(CrashFix::UseAutoJava));
     }
 
     // Signature B: Out of Memory
@@ -88,7 +116,7 @@ fn classify(content: &str) -> Option<CrashAnalysis> {
                 "If you run shaders or large modpacks, 6–8 GB is often needed.".to_string(),
                 "Close other memory-intensive applications running on your machine.".to_string(),
             ],
-        ));
+        ).with_fix(CrashFix::IncreaseMemory));
     }
 
     // Signature C: Graphics Driver OpenGL failure
@@ -121,7 +149,7 @@ fn classify(content: &str) -> Option<CrashAnalysis> {
             Some(m) => format!("A mod's mixin failed to apply, which usually means an outdated or conflicting mod. The failing mixin belongs to: {m}"),
             None => "A mod's mixin failed to apply to a game class. This usually means a mod is outdated or conflicts with another mod or the Minecraft version.".to_string(),
         };
-        return Some(CrashAnalysis::new(
+        let analysis = CrashAnalysis::new(
             "mod",
             "Mod Mixin Failure",
             description,
@@ -129,7 +157,12 @@ fn classify(content: &str) -> Option<CrashAnalysis> {
                 "Update the mod named above (or all mods) to a build matching this Minecraft version.".to_string(),
                 "Temporarily disable the offending mod from the Mods tab to confirm it's the cause.".to_string(),
             ],
-        ));
+        );
+        // Only offer a one-click disable when we could name the owning mod.
+        return Some(match mod_hint {
+            Some(owner) => analysis.with_fix(CrashFix::DisableMod { name_hint: owner }),
+            None => analysis,
+        });
     }
 
     // Signature E: Missing/incompatible mod dependency. Try to name the mod.
@@ -140,7 +173,7 @@ fn classify(content: &str) -> Option<CrashAnalysis> {
             || l.contains("Missing or unsupported mandatory dependencies")
             || l.contains("requires the following mods");
         if is_dep && (l.to_lowercase().contains("mod") || l.contains("dependenc")) {
-            return Some(CrashAnalysis::new(
+            let analysis = CrashAnalysis::new(
                 "mod",
                 "Missing Mod Dependency",
                 format!("A required mod dependency was not satisfied:\n{l}"),
@@ -149,7 +182,12 @@ fn classify(content: &str) -> Option<CrashAnalysis> {
                     "Make sure every mod matches this instance's Minecraft version and loader.".to_string(),
                     "Use 'Check for updates' in the Mods tab to bring mods in line.".to_string(),
                 ],
-            ));
+            );
+            // If we can name the missing mod, offer to install it directly.
+            return Some(match extract_dependency_id(l) {
+                Some((query, display)) => analysis.with_fix(CrashFix::InstallDependency { query, display }),
+                None => analysis,
+            });
         }
     }
 
@@ -241,6 +279,36 @@ fn find_mixin_owner(content: &str) -> Option<String> {
     None
 }
 
+/// Best-effort extraction of the missing dependency's mod id from a Fabric/Forge
+/// "requires …" line, returning `(modrinth_query, display_name)`.
+fn extract_dependency_id(line: &str) -> Option<(String, String)> {
+    let lower = line.to_lowercase();
+    let raw = if let Some(idx) = lower.find("of mod ") {
+        &line[idx + "of mod ".len()..]
+    } else if let Some(idx) = lower.find("mod id:") {
+        &line[idx + "mod id:".len()..]
+    } else {
+        return None;
+    };
+    // First token, dropping surrounding quotes/brackets and stopping at the first
+    // character that can't be part of a mod id.
+    let token: String = raw
+        .trim_start()
+        .trim_start_matches(['\'', '"', '{', '['])
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if token.is_empty() || token.len() > 40 {
+        return None;
+    }
+    // A couple of common aliases between loader dep ids and Modrinth slugs.
+    let query = match token.to_lowercase().as_str() {
+        "fabric" | "fabricloader" => "fabric-api".to_string(),
+        other => other.to_string(),
+    };
+    Some((query, token))
+}
+
 /// Collect a handful of the most relevant lines to show verbatim under the
 /// analysis, biased toward the signature's category.
 fn excerpt_for(category: &str, content: &str) -> Vec<String> {
@@ -303,6 +371,17 @@ mod tests {
     }
 
     #[test]
+    fn test_launcher_incompatible_java_message() {
+        // The launcher rejects this before the game spawns; the cause is only in
+        // the returned error string, which the controller folds into the content.
+        let log = "Incompatible Java version! Game requires Java 21, but the selected Java path provides Java 17. Please go to Settings and change the Java runtime.";
+        let analysis = analyze_crash(Path::new("/tmp"), log).unwrap();
+        assert_eq!(analysis.title, "Incompatible Java Version");
+        assert_eq!(analysis.category, "java");
+        assert_eq!(analysis.fix, Some(CrashFix::UseAutoJava));
+    }
+
+    #[test]
     fn test_out_of_memory() {
         let log = "java.lang.OutOfMemoryError: Java heap space\n\tat net.minecraft.client.renderer.texture.TextureAtlas.init(TextureAtlas.java:150)";
         let path = Path::new("/tmp");
@@ -327,6 +406,30 @@ mod tests {
         let analysis = analyze_crash(Path::new("/tmp"), log).unwrap();
         assert_eq!(analysis.title, "Missing Mod Dependency");
         assert_eq!(analysis.category, "mod");
+        assert_eq!(
+            analysis.fix,
+            Some(CrashFix::InstallDependency {
+                query: "fabric-api".to_string(),
+                display: "fabric-api".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_oom_offers_memory_fix() {
+        let log = "java.lang.OutOfMemoryError: Java heap space";
+        let analysis = analyze_crash(Path::new("/tmp"), log).unwrap();
+        assert_eq!(analysis.fix, Some(CrashFix::IncreaseMemory));
+    }
+
+    #[test]
+    fn test_mixin_offers_disable_fix() {
+        let log = "[main/ERROR]: Mixin apply failed sodium.mixins.json:features.SomeMixin";
+        let analysis = analyze_crash(Path::new("/tmp"), log).unwrap();
+        assert_eq!(
+            analysis.fix,
+            Some(CrashFix::DisableMod { name_hint: "sodium".to_string() })
+        );
     }
 
     #[test]

@@ -20,6 +20,34 @@ pub struct InstanceMod {
     pub metadata: ModMetadata,
 }
 
+/// A static (pre-launch) problem found in an instance's installed mod set.
+#[derive(Debug, Clone)]
+pub struct PreflightIssue {
+    /// "duplicate" or "missing-dependency".
+    pub kind: String,
+    /// Human-readable explanation.
+    pub message: String,
+    /// A one-click remedy, when one exists.
+    pub fix: Option<PreflightFix>,
+}
+
+/// The actionable remedy attached to a [`PreflightIssue`].
+#[derive(Debug, Clone)]
+pub enum PreflightFix {
+    /// Install the named dependency from Modrinth (`query` = search term).
+    InstallDependency { query: String, display: String },
+    /// Disable the duplicate jar with this exact filename.
+    DisableMod { filename: String },
+}
+
+/// The id / provided ids / required dependency ids declared by a single mod jar.
+struct ModRelations {
+    id: String,
+    name: String,
+    provides: Vec<String>,
+    depends: Vec<String>,
+}
+
 // --- Modrinth mrpack index models ---
 #[allow(dead_code)]
 #[derive(Deserialize, Debug, Clone)]
@@ -453,6 +481,86 @@ impl Instance {
         }
         list.sort_by(|a, b| a.metadata.name.to_lowercase().cmp(&b.metadata.name.to_lowercase()));
         Ok(list)
+    }
+
+    /// Statically scan the enabled mod jars for problems that would otherwise
+    /// only surface as a crash on launch: two copies of the same mod, or a
+    /// mandatory dependency that isn't installed. Best-effort — jars whose
+    /// metadata can't be read are skipped.
+    pub fn preflight(&self) -> Vec<PreflightIssue> {
+        let mods_dir = self.path.join("mods");
+        if !mods_dir.exists() {
+            return Vec::new();
+        }
+
+        // Read relations for every enabled jar.
+        let mut mods: Vec<(String, ModRelations)> = Vec::new(); // (filename, relations)
+        if let Ok(entries) = fs::read_dir(&mods_dir) {
+            for entry in entries.flatten() {
+                let filename = entry.file_name().to_string_lossy().to_string();
+                // Only enabled jars (skip ".disabled").
+                if !filename.ends_with(".jar") {
+                    continue;
+                }
+                if let Some(rel) = read_mod_relations(&entry.path()) {
+                    mods.push((filename, rel));
+                }
+            }
+        }
+
+        // Everything the loader will consider present: each mod's id plus any
+        // ids it `provides`. Loader/runtime ids are always assumed present.
+        let mut present: HashSet<String> = DEP_ALWAYS_PRESENT.iter().map(|s| s.to_string()).collect();
+        for (_, rel) in &mods {
+            present.insert(rel.id.to_lowercase());
+            for p in &rel.provides {
+                present.insert(p.to_lowercase());
+            }
+        }
+
+        let mut issues = Vec::new();
+
+        // 1. Duplicates: the same mod id supplied by more than one jar.
+        let mut by_id: HashMap<String, Vec<String>> = HashMap::new();
+        for (filename, rel) in &mods {
+            if !rel.id.is_empty() {
+                by_id.entry(rel.id.to_lowercase()).or_default().push(filename.clone());
+            }
+        }
+        for (id, files) in &by_id {
+            if files.len() > 1 {
+                let mut files = files.clone();
+                files.sort();
+                issues.push(PreflightIssue {
+                    kind: "duplicate".to_string(),
+                    message: format!("Two copies of '{id}' are installed: {}.", files.join(", ")),
+                    // Offer to disable the extra copy (keep the first alphabetically).
+                    fix: Some(PreflightFix::DisableMod { filename: files[1].clone() }),
+                });
+            }
+        }
+
+        // 2. Missing mandatory dependencies (reported once each).
+        let mut reported: HashSet<String> = HashSet::new();
+        for (_, rel) in &mods {
+            for dep in &rel.depends {
+                let dep_l = dep.to_lowercase();
+                if present.contains(&dep_l) || !reported.insert(dep_l.clone()) {
+                    continue;
+                }
+                let query = match dep_l.as_str() {
+                    "fabric" => "fabric-api".to_string(),
+                    other => other.to_string(),
+                };
+                issues.push(PreflightIssue {
+                    kind: "missing-dependency".to_string(),
+                    message: format!("'{}' requires '{dep}', which isn't installed.", rel.name),
+                    fix: Some(PreflightFix::InstallDependency { query, display: dep.clone() }),
+                });
+            }
+        }
+
+        issues
     }
 
     pub fn enable_mod(&self, filename: &str) -> Result<(), String> {
@@ -1017,6 +1125,98 @@ impl Instance {
         let _ = progress_tx.send(ProgressUpdate::Finished).await;
         Ok(())
     }
+}
+
+/// Dependency ids that the loader/runtime always satisfies, so a mod declaring
+/// them shouldn't be flagged as a missing dependency.
+const DEP_ALWAYS_PRESENT: &[&str] = &[
+    "minecraft", "java", "fabricloader", "fabric-loader", "forge", "neoforge",
+    "fml", "mcp", "mixinextras",
+];
+
+/// Read a jar's mod id, the ids it `provides`, and its mandatory dependency ids
+/// (with always-present runtime ids filtered out). `None` if no recognizable mod
+/// metadata is present.
+fn read_mod_relations(jar_path: &Path) -> Option<ModRelations> {
+    let file = File::open(jar_path).ok()?;
+    let mut archive = zip::ZipArchive::new(file).ok()?;
+
+    // Fabric / Quilt.
+    if let Ok(mut f) = archive.by_name("fabric.mod.json") {
+        let mut content = String::new();
+        if f.read_to_string(&mut content).is_ok()
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+        {
+            let id = json["id"].as_str().unwrap_or("").to_string();
+            if !id.is_empty() {
+                let name = json["name"].as_str().unwrap_or(&id).to_string();
+                let provides = json["provides"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                    .unwrap_or_default();
+                let depends = json["depends"]
+                    .as_object()
+                    .map(|o| {
+                        o.keys()
+                            .filter(|k| !DEP_ALWAYS_PRESENT.contains(&k.to_lowercase().as_str()))
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                return Some(ModRelations { id, name, provides, depends });
+            }
+        }
+    }
+
+    // Forge / NeoForge.
+    for name in &["META-INF/mods.toml", "META-INF/neoforge.mods.toml"] {
+        if let Ok(mut tf) = archive.by_name(name) {
+            let mut content = String::new();
+            if tf.read_to_string(&mut content).is_ok()
+                && let Ok(val) = toml::from_str::<toml::Value>(&content)
+            {
+                let first = val.get("mods").and_then(|m| m.as_array()).and_then(|a| a.first());
+                let id = first
+                    .and_then(|m| m.get("modId").or_else(|| m.get("id")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if id.is_empty() {
+                    continue;
+                }
+                let display = first
+                    .and_then(|m| m.get("displayName").or_else(|| m.get("name")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&id)
+                    .to_string();
+                // `[[dependencies.<owner>]]` → an array of dep tables per owning mod.
+                let mut depends = Vec::new();
+                if let Some(deps) = val.get("dependencies").and_then(|d| d.as_table()) {
+                    for list in deps.values() {
+                        let Some(arr) = list.as_array() else { continue };
+                        for d in arr {
+                            let dep_id = d.get("modId").and_then(|v| v.as_str()).unwrap_or("");
+                            if dep_id.is_empty() {
+                                continue;
+                            }
+                            // Forge uses `mandatory = true`; NeoForge uses `type = "required"`.
+                            let mandatory = d.get("mandatory").and_then(|v| v.as_bool()).unwrap_or(false)
+                                || d.get("type")
+                                    .and_then(|v| v.as_str())
+                                    .map(|t| t.eq_ignore_ascii_case("required"))
+                                    .unwrap_or(false);
+                            if mandatory && !DEP_ALWAYS_PRESENT.contains(&dep_id.to_lowercase().as_str()) {
+                                depends.push(dep_id.to_string());
+                            }
+                        }
+                    }
+                }
+                return Some(ModRelations { id, name: display, provides: Vec::new(), depends });
+            }
+        }
+    }
+
+    None
 }
 
 pub fn read_mod_metadata(jar_path: &Path) -> Result<ModMetadata, String> {

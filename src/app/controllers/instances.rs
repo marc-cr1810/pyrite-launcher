@@ -18,6 +18,8 @@ pub fn select(state: &AppState, weak: &Weak<MainWindow>, id: String) {
         let _ = cfg.save();
     }
     refresh(state, weak);
+    // Re-scan the newly selected instance's mods for conflicts.
+    super::preflight::run(state, weak);
 }
 
 pub fn delete(state: &AppState, weak: &Weak<MainWindow>, id: String) {
