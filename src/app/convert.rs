@@ -17,7 +17,7 @@ use crate::core::instance::{Instance, InstanceMod};
 use crate::core::storage::{self, StorageReport};
 use crate::{
     AccountItem, AssetItem, BackupItem, FmtLine, FmtSpan, InstanceItem, JavaRuntimeItem, LogLine, ModItem,
-    ModrinthDetail, ModrinthHit, ScreenshotItem, StorageItem, WorldItem,
+    ModrinthDetail, ModrinthHit, ModrinthVersionRow, ScreenshotItem, StorageItem, WorldItem,
 };
 
 /// Build the Storage-card model: one row per instance (largest first) followed
@@ -622,6 +622,30 @@ pub fn human_count(n: u64) -> String {
     }
 }
 
+/// Group an integer with thousands separators, e.g. 4449 -> "4,449".
+fn group_thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    let len = digits.len();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Capitalize the first character of a slug-ish word, e.g. "fabric" -> "Fabric",
+/// "game-mechanics" -> "Game-mechanics".
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 /// Build a `slint::Image` for a cached Modrinth project icon, or an empty image
 /// when it is not ready yet. Must be called on the UI thread.
 pub fn modrinth_icon_image(state: &AppState, project_id: &str) -> Image {
@@ -709,6 +733,43 @@ pub fn modrinth_detail_model(data: &ModrinthDetailData, state: &AppState) -> Mod
         .collect();
     let version_ids: Vec<SharedString> = data.versions.iter().map(|v| v.id.clone().into()).collect();
 
+    // Structured rows for the Versions tab.
+    let version_rows: Vec<ModrinthVersionRow> = data
+        .versions
+        .iter()
+        .map(|v| ModrinthVersionRow {
+            id: v.id.clone().into(),
+            name: v.name.clone().into(),
+            version_number: v.version_number.clone().into(),
+            game_version: v.game_versions.first().cloned().unwrap_or_default().into(),
+            loader: v.loaders.first().map(|l| capitalize_first(l)).unwrap_or_default().into(),
+            date: v.date_published.as_deref().map(human_relative_time).unwrap_or_default().into(),
+            downloads: human_count(v.downloads).into(),
+        })
+        .collect();
+
+    // Compatibility sidebar data. Game versions arrive ascending from the API;
+    // show newest first, de-duplicated.
+    let mut game_versions: Vec<SharedString> = Vec::new();
+    for gv in p.game_versions.iter().rev() {
+        let s: SharedString = gv.clone().into();
+        if !game_versions.contains(&s) {
+            game_versions.push(s);
+        }
+    }
+    let loaders: Vec<SharedString> = p.loaders.iter().map(|l| capitalize_first(l).into()).collect();
+    let categories_list: Vec<SharedString> =
+        p.categories.iter().map(|c| capitalize_first(c).into()).collect();
+
+    let mut environments: Vec<SharedString> = Vec::new();
+    let supported = |side: &Option<String>| matches!(side.as_deref(), Some("required") | Some("optional"));
+    if supported(&p.client_side) {
+        environments.push("Client-side".into());
+    }
+    if supported(&p.server_side) {
+        environments.push("Server-side".into());
+    }
+
     let url_type = p.project_type.clone().unwrap_or_else(|| data.kind.clone());
     let page_url = format!("https://modrinth.com/{}/{}", url_type, p.slug);
     let updated = p.updated.as_deref().map(human_relative_time).unwrap_or_default();
@@ -721,9 +782,14 @@ pub fn modrinth_detail_model(data: &ModrinthDetailData, state: &AppState) -> Mod
         description: p.description.clone().into(),
         body: markdown_to_text(&p.body).into(),
         icon: modrinth_gallery_image(state, &icon_url),
-        downloads: format!("{} downloads", human_count(p.downloads)).into(),
+        downloads: human_count(p.downloads).into(),
+        follows: group_thousands(p.followers).into(),
         updated: updated.into(),
         categories: p.categories.join(", ").into(),
+        categories_list: ModelRc::new(VecModel::from(categories_list)),
+        game_versions: ModelRc::new(VecModel::from(game_versions)),
+        loaders: ModelRc::new(VecModel::from(loaders)),
+        environments: ModelRc::new(VecModel::from(environments)),
         source_url: p.source_url.clone().unwrap_or_default().into(),
         issues_url: p.issues_url.clone().unwrap_or_default().into(),
         wiki_url: p.wiki_url.clone().unwrap_or_default().into(),
@@ -733,13 +799,21 @@ pub fn modrinth_detail_model(data: &ModrinthDetailData, state: &AppState) -> Mod
         gallery_titles: ModelRc::new(VecModel::from(gallery_titles)),
         version_labels: ModelRc::new(VecModel::from(version_labels)),
         version_ids: ModelRc::new(VecModel::from(version_ids)),
+        versions: ModelRc::new(VecModel::from(version_rows)),
     }
 }
 
 /// Convert a Markdown body to a simplified plain-text rendering: drop images,
 /// flatten links to their text, strip heading/quote/list markers and emphasis.
-/// Not a full Markdown renderer — just readable preview text.
+/// Not a full Markdown renderer — just readable preview text. Project bodies that
+/// are authored as HTML (common on packs imported from CurseForge) are reduced to
+/// text first so tags don't leak into the UI.
 pub fn markdown_to_text(body: &str) -> String {
+    let body = if looks_like_html(body) {
+        html_to_text(body)
+    } else {
+        body.to_string()
+    };
     let mut out_lines: Vec<String> = Vec::new();
     for raw in body.replace("\r\n", "\n").lines() {
         let mut line = raw.trim_end().to_string();
@@ -768,6 +842,82 @@ pub fn markdown_to_text(body: &str) -> String {
         out_lines.push(line);
     }
     out_lines.join("\n").trim().to_string()
+}
+
+/// Cheap heuristic: does this body look like authored HTML rather than Markdown?
+fn looks_like_html(body: &str) -> bool {
+    let lower = body.to_lowercase();
+    lower.contains("</p>")
+        || lower.contains("<p>")
+        || lower.contains("<p ")
+        || lower.contains("<br")
+        || lower.contains("<div")
+        || lower.contains("<a href")
+        || lower.contains("<img")
+}
+
+/// Reduce an HTML fragment to plain text: drop tags (block-level ones become
+/// line breaks), then decode the common entities. Not a real HTML parser — just
+/// enough to render Modrinth/CurseForge pack descriptions readably.
+fn html_to_text(body: &str) -> String {
+    let chars: Vec<char> = body.chars().collect();
+    let n = chars.len();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < n {
+        if chars[i] == '<' {
+            if let Some(rel) = chars[i..].iter().position(|&c| c == '>') {
+                let tag: String = chars[i + 1..i + rel].iter().collect();
+                let name = tag.trim().trim_start_matches('/').to_lowercase();
+                let is_block = ["p", "br", "div", "li", "ul", "ol", "tr", "table",
+                    "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "hr"]
+                    .iter()
+                    .any(|b| name == *b || name.starts_with(&format!("{b} ")));
+                if is_block {
+                    out.push('\n');
+                }
+                i += rel + 1;
+                continue;
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    decode_entities(&out)
+}
+
+/// Decode the handful of HTML entities that show up in pack descriptions, and
+/// collapse runs of spaces/tabs introduced by removed inline tags.
+fn decode_entities(s: &str) -> String {
+    let replaced = s
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'");
+    // Collapse horizontal whitespace within each line (keep newlines).
+    replaced
+        .lines()
+        .map(|line| {
+            let mut out = String::with_capacity(line.len());
+            let mut prev_space = false;
+            for c in line.chars() {
+                let space = c == ' ' || c == '\t';
+                if space {
+                    if !prev_space {
+                        out.push(' ');
+                    }
+                } else {
+                    out.push(c);
+                }
+                prev_space = space;
+            }
+            out.trim().to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Inline-Markdown cleanup for one line: `![alt](url)` removed, `[text](url)` ->

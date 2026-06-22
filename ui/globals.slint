@@ -121,6 +121,17 @@ export struct ModrinthHit {
     icon: image,         // decoded thumbnail, empty until fetched
 }
 
+// One row in the detail page's Versions tab / table.
+export struct ModrinthVersionRow {
+    id: string,
+    name: string,           // version display name
+    version-number: string,
+    game-version: string,   // primary supported game version
+    loader: string,         // primary loader (capitalized), "" for resource/shader packs
+    date: string,           // human-relative publish date
+    downloads: string,      // pre-formatted ("80.3K")
+}
+
 // Full project detail (gallery, body, versions, links) shown after clicking a hit.
 export struct ModrinthDetail {
     project-id: string,
@@ -130,9 +141,14 @@ export struct ModrinthDetail {
     description: string, // short summary
     body: string,        // simplified plain-text of the Markdown body
     icon: image,
-    downloads: string,
+    downloads: string,   // pre-formatted ("13.5M")
+    follows: string,     // pre-formatted with thousands separators ("4,449")
     updated: string,     // human-relative ("3 days ago")
-    categories: string,  // comma-joined
+    categories: string,  // comma-joined (legacy; prefer categories-list)
+    categories-list: [string], // capitalized category names, for tag pills
+    game-versions: [string],   // supported MC versions (newest first), for badges
+    loaders: [string],         // platforms (capitalized), for badges
+    environments: [string],    // "Client-side" / "Server-side"
     source-url: string,
     issues-url: string,
     wiki-url: string,
@@ -143,6 +159,7 @@ export struct ModrinthDetail {
     // Parallel arrays: picker labels and the version ids they map to.
     version-labels: [string],
     version-ids: [string],
+    versions: [ModrinthVersionRow], // structured rows for the Versions tab
 }
 
 export struct JavaRuntimeItem {

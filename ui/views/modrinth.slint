@@ -1,5 +1,5 @@
-import { Theme, Logic, Lightbox, Icons, ModrinthHit } from "../globals.slint";
-import { Card, PButton, Avatar, EmptyState, Dialog, Icon } from "../components.slint";
+import { Theme, Logic, Lightbox, Icons, ModrinthHit, ModrinthVersionRow } from "../globals.slint";
+import { Card, PButton, Avatar, EmptyState, Dialog, Icon, Badge, LoaderBadge } from "../components.slint";
 import { ScrollView, LineEdit, ComboBox, Slider } from "std-widgets.slint";
 
 // A single Modrinth result row: thumbnail, title/description/meta, action button.
@@ -60,115 +60,360 @@ export component ModrinthRow inherits Rectangle {
     }
 }
 
-// Full project detail: gallery, simplified body, metadata, links, version picker.
+// Pill-style tab button used by the detail page's section switcher.
+component DetailTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 34px;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-sm;
+    background: root.active ? Theme.accent : (ta.has-hover ? Theme.surface-hover : transparent);
+    animate background { duration: 100ms; }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        Text {
+            text: root.label;
+            color: root.active ? Theme.accent-text : Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// A titled block inside the right-hand info sidebar.
+component SideSection inherits VerticalLayout {
+    in property <string> title;
+    spacing: 8px;
+    Text { text: root.title; color: Theme.text; font-size: 14px; font-weight: 700; }
+    @children
+}
+
+// Small muted sub-label inside a sidebar section.
+component SideLabel inherits Text {
+    color: Theme.text-muted;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+// One link line in the sidebar's Links section.
+component SideLink inherits Rectangle {
+    in property <string> label;
+    in property <string> url;
+    callback clicked();
+    height: 26px;
+    border-radius: Theme.radius-sm;
+    background: la.has-hover ? Theme.surface-hover : transparent;
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 6px;
+        Text { text: root.label; color: Theme.accent; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        Text { text: "↗"; color: Theme.text-dim; font-size: 12px; vertical-alignment: center; }
+    }
+    la := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// One row in the Versions tab table.
+component VersionListRow inherits Rectangle {
+    in property <ModrinthVersionRow> ver;
+    in property <string> action-text;
+    in property <bool> compact;
+    callback action();
+    height: 56px;
+    border-radius: Theme.radius-sm;
+    background: vt.has-hover ? Theme.surface-hover : Theme.surface-alt;
+    animate background { duration: 100ms; }
+    vt := TouchArea { }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 10px;
+        // Name + version number
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text { text: root.ver.name; color: Theme.text; font-size: 13px; font-weight: 700; overflow: elide; }
+            Text { text: root.ver.version-number; color: Theme.text-dim; font-size: 11px; overflow: elide; }
+        }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                alignment: start;
+                if root.ver.game-version != "" : Badge { text: root.ver.game-version; tint: Theme.text-muted; }
+            }
+            width: 64px;
+        }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                alignment: start;
+                if root.ver.loader != "" : LoaderBadge { loader: root.ver.loader; }
+            }
+            width: 76px;
+        }
+        if !root.compact : VerticalLayout {
+            alignment: center;
+            width: 80px;
+            Text { text: root.ver.date; color: Theme.text-dim; font-size: 11px; }
+        }
+        VerticalLayout {
+            alignment: center;
+            width: 56px;
+            Text { text: "↓ " + root.ver.downloads; color: Theme.text-dim; font-size: 11px; }
+        }
+        VerticalLayout {
+            alignment: center;
+            PButton { text: root.action-text; primary: true; clicked => { root.action(); } }
+        }
+    }
+}
+
+// Full project detail laid out like the Modrinth website: a header with stats
+// and tags, a pill tab bar (Description / Gallery / Versions), and — when not
+// `compact` — a right-hand info sidebar (Compatibility / Links / Tags).
 // Reads the `Logic.modrinth-detail` global; the parent supplies the action label
 // and handles `back()` / `action(version-id)`.
 export component ModrinthDetailPane inherits VerticalLayout {
-    in property <string> action-text: "Install";
+    in property <string> action-text: "Install";        // header (latest) action
+    in property <string> row-action-text: "Install";    // per-version action
+    in property <bool> compact: false;                  // hide sidebar (narrow modal)
     callback back();
     callback action(string /* version-id */);
-    property <int> version-index: 0;
+    property <int> tab: 0;   // 0 = Description, 1 = Gallery, 2 = Versions
     spacing: 12px;
 
     HorizontalLayout {
-        PButton { text: "← Back"; clicked => { root.back(); } }
+        PButton { text: "Back"; icon: Icons.caret-left; clicked => { root.back(); } }
         Rectangle { horizontal-stretch: 1; }
     }
 
     if Logic.modrinth-detail-loading : Text { text: "Loading…"; color: Theme.text-dim; font-size: 13px; }
 
     if !Logic.modrinth-detail-loading : VerticalLayout {
-        spacing: 12px;
+        spacing: 14px;
         vertical-stretch: 1;
 
-        // Header
-        HorizontalLayout {
-            spacing: 14px;
-            Rectangle {
-                width: 72px; height: 72px; border-radius: Theme.radius-sm; background: Theme.surface; clip: true;
-                Icon { width: 100%; height: 100%; icon: Icons.package; color: Theme.text-dim; font-size: 30px; }
-                Image { width: 100%; height: 100%; source: Logic.modrinth-detail.icon; image-fit: contain; }
-            }
+        // ---- Header card ----
+        Card {
             VerticalLayout {
-                alignment: center;
-                spacing: 4px;
-                horizontal-stretch: 1;
-                Text { text: Logic.modrinth-detail.title; color: Theme.text; font-size: 20px; font-weight: 800; overflow: elide; }
-                Text { text: "by " + Logic.modrinth-detail.author; color: Theme.text-muted; font-size: 13px; }
+                padding: 16px;
+                spacing: 10px;
                 HorizontalLayout {
                     spacing: 14px;
-                    alignment: start;
-                    Text { text: "↓ " + Logic.modrinth-detail.downloads; color: Theme.text-dim; font-size: 12px; }
-                    if Logic.modrinth-detail.updated != "" : Text { text: "updated " + Logic.modrinth-detail.updated; color: Theme.text-dim; font-size: 12px; }
-                }
-                if Logic.modrinth-detail.categories != "" : Text { text: Logic.modrinth-detail.categories; color: Theme.text-dim; font-size: 11px; overflow: elide; }
-            }
-        }
-
-        Text { text: Logic.modrinth-detail.description; color: Theme.text-muted; font-size: 13px; wrap: word-wrap; }
-
-        // Gallery strip
-        if Logic.modrinth-detail.gallery.length > 0 : Rectangle {
-            height: 128px;
-            ScrollView {
-                viewport-height: 116px;
-                HorizontalLayout {
-                    spacing: 8px;
-                    for img[idx] in Logic.modrinth-detail.gallery : Rectangle {
-                        width: 206px; height: 116px; border-radius: Theme.radius-sm; background: Theme.surface; clip: true;
-                        Image { width: 100%; height: 100%; source: img; image-fit: contain; }
-                        gal-touch := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { Lightbox.show(Logic.modrinth-detail.gallery, Logic.modrinth-detail.gallery-titles, idx); }
+                    Rectangle {
+                        width: 72px; height: 72px; border-radius: Theme.radius-sm; background: Theme.surface; clip: true;
+                        Icon { width: 100%; height: 100%; icon: Icons.package; color: Theme.text-dim; font-size: 30px; }
+                        Image { width: 100%; height: 100%; source: Logic.modrinth-detail.icon; image-fit: contain; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 5px;
+                        horizontal-stretch: 1;
+                        Text { text: Logic.modrinth-detail.title; color: Theme.text; font-size: 22px; font-weight: 800; overflow: elide; }
+                        if Logic.modrinth-detail.description != "" : Text {
+                            text: Logic.modrinth-detail.description; color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 16px;
+                            alignment: start;
+                            Text { text: "↓ " + Logic.modrinth-detail.downloads; color: Theme.text-dim; font-size: 12px; }
+                            Text { text: "♥ " + Logic.modrinth-detail.follows; color: Theme.text-dim; font-size: 12px; }
+                            Text { text: "by " + Logic.modrinth-detail.author; color: Theme.text-dim; font-size: 12px; }
+                            if Logic.modrinth-detail.updated != "" : Text { text: "updated " + Logic.modrinth-detail.updated; color: Theme.text-dim; font-size: 12px; }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        PButton {
+                            text: root.action-text;
+                            primary: true;
+                            enabled: Logic.modrinth-detail.version-ids.length > 0;
+                            clicked => { root.action(""); }
                         }
                     }
                 }
             }
         }
 
-        // Body
-        if Logic.modrinth-detail.body != "" : Card {
-            vertical-stretch: 1;
-            ScrollView {
-                VerticalLayout {
-                    padding: 6px;
-                    Text { text: Logic.modrinth-detail.body; color: Theme.text-muted; font-size: 12px; wrap: word-wrap; }
-                }
-            }
-        }
-        if Logic.modrinth-detail.body == "" : Rectangle { vertical-stretch: 1; }
-
-        // Links
+        // ---- Tab bar ----
         HorizontalLayout {
-            spacing: 8px;
-            if Logic.modrinth-detail.page-url != "" : PButton { text: "Modrinth ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.page-url); } }
-            if Logic.modrinth-detail.source-url != "" : PButton { text: "Source ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.source-url); } }
-            if Logic.modrinth-detail.issues-url != "" : PButton { text: "Issues ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.issues-url); } }
-            if Logic.modrinth-detail.wiki-url != "" : PButton { text: "Wiki ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.wiki-url); } }
-            if Logic.modrinth-detail.discord-url != "" : PButton { text: "Discord ↗"; clicked => { Logic.open-url(Logic.modrinth-detail.discord-url); } }
+            spacing: 6px;
+            DetailTab { label: "Description"; active: root.tab == 0; clicked => { root.tab = 0; } }
+            DetailTab { label: "Gallery (" + Logic.modrinth-detail.gallery.length + ")"; active: root.tab == 1; clicked => { root.tab = 1; } }
+            DetailTab { label: "Versions (" + Logic.modrinth-detail.versions.length + ")"; active: root.tab == 2; clicked => { root.tab = 2; } }
             Rectangle { horizontal-stretch: 1; }
         }
 
-        // Version picker + primary action
+        // ---- Body: content (+ optional sidebar) ----
         HorizontalLayout {
-            spacing: 10px;
+            spacing: 16px;
+            vertical-stretch: 1;
+
+            // Left: the active tab's content.
             VerticalLayout {
                 horizontal-stretch: 1;
-                spacing: 4px;
-                Text { text: "Version"; color: Theme.text-muted; font-size: 12px; }
-                ComboBox {
-                    model: Logic.modrinth-detail.version-labels;
-                    current-index <=> root.version-index;
-                    enabled: Logic.modrinth-detail.version-labels.length > 0;
+                vertical-stretch: 1;
+
+                // Description
+                if root.tab == 0 : Card {
+                    vertical-stretch: 1;
+                    ScrollView {
+                        VerticalLayout {
+                            padding: 14px;
+                            Text {
+                                text: Logic.modrinth-detail.body != "" ? Logic.modrinth-detail.body : Logic.modrinth-detail.description;
+                                color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+
+                // Gallery — responsive 2-column grid of captioned thumbnails.
+                if root.tab == 1 : Card {
+                    vertical-stretch: 1;
+                    if Logic.modrinth-detail.gallery.length == 0 : EmptyState {
+                        icon: Icons.image; title: "No gallery images";
+                    }
+                    if Logic.modrinth-detail.gallery.length > 0 : ScrollView {
+                        VerticalLayout {
+                            padding: 12px;
+                            GridLayout {
+                                spacing: 10px;
+                                for img[idx] in Logic.modrinth-detail.gallery : Rectangle {
+                                    row: floor(idx / 2);
+                                    col: mod(idx, 2);
+                                    height: 150px;
+                                    border-radius: Theme.radius-sm;
+                                    background: Theme.surface;
+                                    clip: true;
+                                    Image { width: 100%; height: 100%; source: img; image-fit: cover; }
+                                    // Caption gradient strip along the bottom.
+                                    if idx < Logic.modrinth-detail.gallery-titles.length && Logic.modrinth-detail.gallery-titles[idx] != "" : Rectangle {
+                                        y: parent.height - self.height;
+                                        height: 28px;
+                                        background: #000000aa;
+                                        Text {
+                                            x: 8px;
+                                            width: parent.width - 16px;
+                                            text: Logic.modrinth-detail.gallery-titles[idx];
+                                            color: white; font-size: 11px; overflow: elide; vertical-alignment: center;
+                                        }
+                                    }
+                                    gal-touch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { Lightbox.show(Logic.modrinth-detail.gallery, Logic.modrinth-detail.gallery-titles, idx); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Versions
+                if root.tab == 2 : Card {
+                    vertical-stretch: 1;
+                    if Logic.modrinth-detail.versions.length == 0 : EmptyState {
+                        icon: Icons.package; title: "No versions available";
+                    }
+                    if Logic.modrinth-detail.versions.length > 0 : ScrollView {
+                        VerticalLayout {
+                            padding: 8px;
+                            spacing: 6px;
+                            for ver in Logic.modrinth-detail.versions : VersionListRow {
+                                ver: ver;
+                                compact: root.compact;
+                                action-text: root.row-action-text;
+                                action => { root.action(ver.id); }
+                            }
+                        }
+                    }
                 }
             }
-            VerticalLayout {
-                alignment: end;
-                PButton {
-                    text: root.action-text;
-                    primary: true;
-                    enabled: Logic.modrinth-detail.version-ids.length > 0;
-                    clicked => { root.action(Logic.modrinth-detail.version-ids[root.version-index]); }
+
+            // Right: info sidebar (hidden in compact mode).
+            if !root.compact : Rectangle {
+                width: 232px;
+                vertical-stretch: 1;
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 14px;
+
+                        // Compatibility
+                        if Logic.modrinth-detail.game-versions.length > 0 || Logic.modrinth-detail.loaders.length > 0 || Logic.modrinth-detail.environments.length > 0 : Card {
+                            vertical-stretch: 0;
+                            VerticalLayout {
+                                padding: 14px;
+                                SideSection {
+                                    title: "Compatibility";
+                                    if Logic.modrinth-detail.game-versions.length > 0 : SideLabel { text: "Minecraft"; }
+                                    if Logic.modrinth-detail.game-versions.length > 0 : GridLayout {
+                                        spacing: 6px;
+                                        for gv[i] in Logic.modrinth-detail.game-versions : HorizontalLayout {
+                                            row: floor(i / 2);
+                                            col: mod(i, 2);
+                                            alignment: start;
+                                            Badge { text: gv; tint: Theme.text-muted; }
+                                        }
+                                    }
+                                    if Logic.modrinth-detail.loaders.length > 0 : SideLabel { text: "Platforms"; }
+                                    if Logic.modrinth-detail.loaders.length > 0 : HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        for ld in Logic.modrinth-detail.loaders : LoaderBadge { loader: ld; }
+                                    }
+                                    if Logic.modrinth-detail.environments.length > 0 : SideLabel { text: "Environments"; }
+                                    if Logic.modrinth-detail.environments.length > 0 : HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        for env in Logic.modrinth-detail.environments : Badge { text: env; tint: Theme.accent; }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Links
+                        if Logic.modrinth-detail.page-url != "" || Logic.modrinth-detail.source-url != "" || Logic.modrinth-detail.issues-url != "" || Logic.modrinth-detail.wiki-url != "" || Logic.modrinth-detail.discord-url != "" : Card {
+                            vertical-stretch: 0;
+                            VerticalLayout {
+                                padding: 14px;
+                                SideSection {
+                                    title: "Links";
+                                    if Logic.modrinth-detail.page-url != "" : SideLink { label: "Modrinth page"; clicked => { Logic.open-url(Logic.modrinth-detail.page-url); } }
+                                    if Logic.modrinth-detail.source-url != "" : SideLink { label: "Source"; clicked => { Logic.open-url(Logic.modrinth-detail.source-url); } }
+                                    if Logic.modrinth-detail.issues-url != "" : SideLink { label: "Report issues"; clicked => { Logic.open-url(Logic.modrinth-detail.issues-url); } }
+                                    if Logic.modrinth-detail.wiki-url != "" : SideLink { label: "Wiki"; clicked => { Logic.open-url(Logic.modrinth-detail.wiki-url); } }
+                                    if Logic.modrinth-detail.discord-url != "" : SideLink { label: "Discord"; clicked => { Logic.open-url(Logic.modrinth-detail.discord-url); } }
+                                }
+                            }
+                        }
+
+                        // Tags
+                        if Logic.modrinth-detail.categories-list.length > 0 : Card {
+                            vertical-stretch: 0;
+                            VerticalLayout {
+                                padding: 14px;
+                                SideSection {
+                                    title: "Tags";
+                                    GridLayout {
+                                        spacing: 6px;
+                                        for cat[i] in Logic.modrinth-detail.categories-list : HorizontalLayout {
+                                            row: floor(i / 2);
+                                            col: mod(i, 2);
+                                            alignment: start;
+                                            Badge { text: cat; tint: Theme.accent; }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle { vertical-stretch: 1; }
+                    }
                 }
             }
         }
@@ -205,6 +450,7 @@ export component ModrinthView inherits Rectangle {
         if Logic.modrinth-detail-open : ModrinthDetailPane {
             vertical-stretch: 1;
             action-text: "Create instance…";
+            row-action-text: "Create";
             back => { Logic.modrinth-close-detail(); }
             action(vid) => { root.open-create(root.detail-hit, vid); }
         }

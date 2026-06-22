@@ -884,6 +884,10 @@ pub struct ModrinthVersion {
     pub loaders: Vec<String>,
     #[serde(default)]
     pub dependencies: Vec<ModrinthDependency>,
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default)]
+    pub date_published: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -898,6 +902,17 @@ pub struct ModrinthProject {
     pub categories: Vec<String>,
     #[serde(default)]
     pub downloads: u64,
+    #[serde(default)]
+    pub followers: u64,
+    #[serde(default, rename = "game_versions")]
+    pub game_versions: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<String>,
+    /// "required" / "optional" / "unsupported" — used for the environment badges.
+    #[serde(default)]
+    pub client_side: Option<String>,
+    #[serde(default)]
+    pub server_side: Option<String>,
     #[serde(default)]
     pub icon_url: Option<String>,
     #[serde(default)]

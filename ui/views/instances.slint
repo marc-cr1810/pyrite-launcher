@@ -1008,6 +1008,7 @@ export component InstancesView inherits Rectangle {
         if Logic.modrinth-detail-open : ModrinthDetailPane {
             height: 540px;
             action-text: "Install";
+            compact: true;
             back => { Logic.modrinth-close-detail(); }
             action(vid) => { Logic.modrinth-install(root.selected-id, Logic.modrinth-detail.project-id, root.browse-kind, vid); }
         }
