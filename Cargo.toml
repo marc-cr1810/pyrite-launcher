@@ -28,6 +28,8 @@ image = { version = "0.25", default-features = false, features = ["png", "webp"]
 arboard = { version = "3", features = ["wayland-data-control"] }
 # Native file-open dialog for picking a custom instance icon.
 rfd = "0.14"
+# System RAM detection for the memory slider; no per-process refresh needed.
+sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 
 [build-dependencies]
 slint-build = "1.16"

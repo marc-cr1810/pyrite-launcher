@@ -290,4 +290,28 @@ export component MainWindow inherits Window {
             PButton { text: "Close"; primary: true; clicked => { Logic.show-crash-dialog = false; } }
         }
     }
+
+    if Logic.show-prune-dialog : Dialog {
+        dialog-width: 460px;
+        closed => { Logic.show-prune-dialog = false; }
+        Text { text: "Clean unused cache?"; color: Theme.text; font-size: 18px; font-weight: 700; }
+        Text {
+            text: "This deletes Minecraft versions, libraries, and asset files that no installed instance references (" + Logic.storage-orphan-summary + "). They will be re-downloaded automatically if needed later.";
+            color: Theme.text-muted; font-size: 13px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            padding-top: 8px;
+            PButton { text: "Cancel"; clicked => { Logic.show-prune-dialog = false; } }
+            PButton {
+                text: "Delete";
+                primary: true;
+                clicked => {
+                    Logic.show-prune-dialog = false;
+                    Logic.prune-cache();
+                }
+            }
+        }
+    }
 }

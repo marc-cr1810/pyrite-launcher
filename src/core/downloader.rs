@@ -23,16 +23,25 @@ pub enum ProgressUpdate {
 pub struct Downloader {
     client: Client,
     progress_tx: Sender<ProgressUpdate>,
+    /// Maximum number of asset files fetched in parallel.
+    concurrency: usize,
 }
 
 impl Downloader {
     pub fn new(progress_tx: Sender<ProgressUpdate>) -> Self {
+        Self::with_concurrency(progress_tx, crate::core::config::default_download_concurrency())
+    }
+
+    /// Construct a downloader with an explicit parallel-download limit. Values
+    /// below 1 are clamped to 1 so the asset stream always makes progress.
+    pub fn with_concurrency(progress_tx: Sender<ProgressUpdate>, concurrency: usize) -> Self {
         Self {
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .unwrap(),
             progress_tx,
+            concurrency: concurrency.max(1),
         }
     }
 
@@ -321,7 +330,7 @@ impl Downloader {
                     }
                 });
 
-                let mut stream = futures_util::stream::iter(futures).buffer_unordered(16);
+                let mut stream = futures_util::stream::iter(futures).buffer_unordered(self.concurrency);
                 while let Some(res) = stream.next().await {
                     if let Err(e) = res {
                         self.send_message(format!("Warning: {}", e)).await;

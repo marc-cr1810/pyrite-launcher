@@ -75,6 +75,11 @@ pub fn refresh_settings(ui: &MainWindow, config: &Config) {
     logic.set_game_dir(config.game_dir.to_string_lossy().to_string().into());
     logic.set_java_path(config.java_path.to_string_lossy().to_string().into());
     logic.set_jvm_args(config.jvm_args.join(" ").into());
+    logic.set_download_concurrency(config.download_concurrency as i32);
+
+    // Bound the memory sliders by detected physical RAM (fallback 8 GB).
+    let ram_mb = crate::core::config::system_ram_mb().unwrap_or(8192);
+    logic.set_system_ram_mb(ram_mb.min(i32::MAX as u64) as i32);
 
     let runtimes = convert::java_runtimes_model(config);
     logic.set_java_runtimes(runtimes);

@@ -236,7 +236,7 @@ async fn download_version_files(
     }
 
     let (tx, mut rx) = mpsc::channel::<ProgressUpdate>(100);
-    let downloader = Downloader::new(tx);
+    let downloader = Downloader::with_concurrency(tx, config.download_concurrency);
     let game_dir = config.game_dir.clone();
     let dl_details = details.clone();
     let dl_task = tokio::spawn(async move {

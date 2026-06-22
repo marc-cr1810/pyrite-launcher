@@ -1,6 +1,6 @@
-import { Theme, Logic } from "../globals.slint";
+import { Theme, Logic, StorageItem } from "../globals.slint";
 import { Card, PButton } from "../components.slint";
-import { LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
+import { LineEdit, ComboBox, ScrollView, Slider } from "std-widgets.slint";
 
 export component SettingsView inherits VerticalLayout {
     padding: 24px;
@@ -26,12 +26,28 @@ export component SettingsView inherits VerticalLayout {
                     jvm-edit := LineEdit { text: Logic.jvm-args; }
 
                     HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Parallel downloads: \{round(conc-slider.value)}";
+                            color: Theme.text-muted;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        conc-slider := Slider {
+                            minimum: 1;
+                            maximum: 64;
+                            value: Logic.download-concurrency;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    HorizontalLayout {
                         alignment: end;
                         PButton {
                             text: "Save";
                             primary: true;
                             clicked => {
-                                Logic.save-settings(game-dir-edit.text, java-edit.text, jvm-edit.text);
+                                Logic.save-settings(game-dir-edit.text, java-edit.text, jvm-edit.text, round(conc-slider.value));
                             }
                         }
                     }
@@ -138,6 +154,78 @@ export component SettingsView inherits VerticalLayout {
                     Text {
                         text: "Drop *.json palettes in the launcher config 'themes' folder to add more.";
                         color: Theme.text-dim; font-size: 11px;
+                    }
+                }
+            }
+
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+                    HorizontalLayout {
+                        alignment: space-between;
+                        Text { text: "Storage"; color: Theme.text; font-size: 16px; font-weight: 700; vertical-alignment: center; }
+                        PButton {
+                            text: Logic.storage-scanning ? "Scanning…" : "Refresh";
+                            enabled: !Logic.storage-scanning;
+                            clicked => { Logic.refresh-storage(); }
+                        }
+                    }
+                    Text {
+                        text: Logic.storage-total == "" ? "Press Refresh to measure disk usage." : "Total footprint: " + Logic.storage-total;
+                        color: Theme.text-muted; font-size: 12px;
+                    }
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        for item in Logic.storage-items : Rectangle {
+                            height: 28px;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Text {
+                                    text: (item.kind == "cache" ? "◈ " : "▤ ") + item.label;
+                                    color: item.kind == "cache" ? Theme.text-muted : Theme.text;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: item.detail;
+                                    color: Theme.text-dim;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                                if item.kind == "instance" : PButton {
+                                    text: "Open";
+                                    clicked => { Logic.open-instance-folder(item.id); }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.border; }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: space-between;
+                        Text {
+                            text: Logic.storage-orphan-summary == ""
+                                ? "Scan for versions, libraries, and assets no instance uses."
+                                : ("Unused: " + Logic.storage-orphan-summary);
+                            color: Theme.text-muted; font-size: 12px; vertical-alignment: center;
+                            wrap: word-wrap; horizontal-stretch: 1;
+                        }
+                        PButton {
+                            text: Logic.storage-scanning ? "Scanning…" : "Scan unused";
+                            enabled: !Logic.storage-scanning;
+                            clicked => { Logic.scan-orphans(); }
+                        }
+                        if Logic.storage-has-orphans : PButton {
+                            text: "Clean…";
+                            primary: true;
+                            clicked => { Logic.show-prune-dialog = true; }
+                        }
                     }
                 }
             }

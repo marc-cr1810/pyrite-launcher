@@ -15,6 +15,7 @@ pub fn save(
     game_dir: String,
     java_path: String,
     jvm_args: String,
+    download_concurrency: i32,
 ) {
     {
         let mut cfg = state.config.lock().unwrap();
@@ -28,6 +29,7 @@ pub fn save(
             .split_whitespace()
             .map(|s| s.to_string())
             .collect();
+        cfg.download_concurrency = download_concurrency.clamp(1, 64) as usize;
         let _ = cfg.save();
     }
     // game_dir may have changed instance discovery; refresh everything.

@@ -7,6 +7,7 @@ pub mod instances;
 pub mod launch;
 pub mod modrinth;
 pub mod settings;
+pub mod storage;
 pub mod versions;
 
 use crate::app::state::AppState;
@@ -69,7 +70,7 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
                     loader.to_string(),
                     loader_version.to_string(),
                     icon_id.to_string(),
-                    memory.to_string(),
+                    memory,
                     jvm_args.to_string(),
                 );
             },
@@ -79,12 +80,13 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
         let st = state.clone();
         let weak = ui.as_weak();
         logic.on_edit_instance(
-            move |id, name, jvm_args, java_path, pre_launch, post_exit, icon_id| {
+            move |id, name, memory, jvm_args, java_path, pre_launch, post_exit, icon_id| {
                 instances::edit(
                     &st,
                     &weak,
                     id.to_string(),
                     name.to_string(),
+                    memory,
                     jvm_args.to_string(),
                     java_path.to_string(),
                     pre_launch.to_string(),
@@ -270,7 +272,7 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
                 project_id.to_string(),
                 name.to_string(),
                 icon_id.to_string(),
-                memory.to_string(),
+                memory,
                 jvm_args.to_string(),
                 version_id.to_string(),
             );
@@ -323,13 +325,14 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     {
         let st = state.clone();
         let weak = ui.as_weak();
-        logic.on_save_settings(move |game_dir, java_path, jvm_args| {
+        logic.on_save_settings(move |game_dir, java_path, jvm_args, concurrency| {
             settings::save(
                 &st,
                 &weak,
                 game_dir.to_string(),
                 java_path.to_string(),
                 jvm_args.to_string(),
+                concurrency,
             );
         });
     }
@@ -347,5 +350,26 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
         let st = state.clone();
         let weak = ui.as_weak();
         logic.on_use_java_runtime(move |major| settings::use_java_runtime(&st, &weak, major));
+    }
+
+    // --- Storage / resource management ---
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_refresh_storage(move || storage::refresh(&st, &weak));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_scan_orphans(move || storage::scan(&st, &weak));
+    }
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_prune_cache(move || storage::prune(&st, &weak));
+    }
+    {
+        let st = state.clone();
+        logic.on_open_instance_folder(move |id| storage::open_instance_folder(&st, id.to_string()));
     }
 }

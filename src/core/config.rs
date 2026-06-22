@@ -33,6 +33,28 @@ pub struct Config {
     pub active_account_uuid: Option<String>,
     pub selected_version: Option<String>,
     pub active_instance: Option<String>,
+    /// Number of files downloaded concurrently. Defaults to 16; older configs
+    /// without the field fall back via `default_download_concurrency`.
+    #[serde(default = "default_download_concurrency")]
+    pub download_concurrency: usize,
+}
+
+/// Default parallel download count, used both for `Config::default` and as the
+/// serde fallback for configs written before this field existed.
+pub fn default_download_concurrency() -> usize {
+    16
+}
+
+/// Total physical RAM in megabytes, or `None` if it can't be determined.
+pub fn system_ram_mb() -> Option<u64> {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_memory();
+    let total = sys.total_memory(); // bytes
+    if total == 0 {
+        None
+    } else {
+        Some(total / 1024 / 1024)
+    }
 }
 
 impl Default for Config {
@@ -46,6 +68,7 @@ impl Default for Config {
             active_account_uuid: None,
             selected_version: None,
             active_instance: None,
+            download_concurrency: default_download_concurrency(),
         }
     }
 }

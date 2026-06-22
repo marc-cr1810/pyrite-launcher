@@ -1,6 +1,6 @@
 import { Theme, Logic, Lightbox, ModrinthHit } from "../globals.slint";
 import { Card, PButton, Avatar, EmptyState, Dialog } from "../components.slint";
-import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
+import { ScrollView, LineEdit, ComboBox, Slider } from "std-widgets.slint";
 
 // A single Modrinth result row: thumbnail, title/description/meta, action button.
 // Reused by the modpack browser here and the in-detail browse dialog. Clicking
@@ -323,20 +323,22 @@ export component ModrinthView inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
-            spacing: 12px;
-            VerticalLayout {
-                spacing: 6px;
-                width: 150px;
-                Text { text: "Max memory (MB)"; color: Theme.text-muted; font-size: 12px; }
-                mem := LineEdit { input-type: number; placeholder-text: "e.g. 4096"; }
+        VerticalLayout {
+            spacing: 6px;
+            Text {
+                text: round(mem.value) == 0 ? "Max memory: default" : "Max memory: \{round(mem.value)} MB";
+                color: Theme.text-muted; font-size: 12px;
             }
-            VerticalLayout {
-                spacing: 6px;
-                horizontal-stretch: 1;
-                Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
-                jvm := LineEdit { placeholder-text: "-XX:+UseG1GC"; }
+            mem := Slider {
+                minimum: 0;
+                maximum: Logic.system-ram-mb;
+                value: 2048;
             }
+        }
+        VerticalLayout {
+            spacing: 6px;
+            Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
+            jvm := LineEdit { placeholder-text: "-XX:+UseG1GC"; }
         }
 
         Text {
@@ -358,7 +360,7 @@ export component ModrinthView inherits Rectangle {
                         root.pending-pack.project-id,
                         root.create-name,
                         Logic.pending-icon-id,
-                        mem.text,
+                        round(mem.value),
                         jvm.text,
                         root.pending-version-id);
                     root.create-open = false;

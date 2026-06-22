@@ -230,7 +230,7 @@ pub fn create_instance(
     project_id: String,
     name: String,
     icon_id: String,
-    memory: String,
+    memory: i32,
     jvm_args: String,
     version_id: String,
 ) {
@@ -308,7 +308,7 @@ pub fn create_instance(
 
         // Apply the chosen name, launch overrides, and icon.
         inst.config.name = name.clone();
-        inst.config.jvm_args = instances::build_jvm_args(&memory, &jvm_args);
+        inst.config.jvm_args = instances::build_jvm_args(memory, &jvm_args);
         if icon_id == "modpack" {
             if let Some(url) = icon_url {
                 if let Ok(bytes) = download_bytes(&url).await {

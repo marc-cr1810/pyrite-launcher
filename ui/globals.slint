@@ -27,7 +27,10 @@ export struct InstanceItem {
     icon-id: string,
     icon-glyph: string,
     icon-image: image,
-    // Per-instance launch overrides (empty string = unset), for the edit dialog
+    // Per-instance launch overrides (empty string = unset), for the edit dialog.
+    // memory-mb is the -Xmx value split out for the slider; jvm-args holds the
+    // remaining arguments (without -Xmx/-Xms).
+    memory-mb: int,
     jvm-args: string,
     java-path: string,
     pre-launch: string,
@@ -153,6 +156,14 @@ export struct LogLine {
     level: string,     // "error" / "warn" / "info" / "plain"
 }
 
+export struct StorageItem {
+    label: string,     // instance name or shared-cache name
+    detail: string,    // human-readable size, e.g. "1.4 GB"
+    bytes: int,        // raw size, for bar scaling
+    kind: string,      // "instance" / "cache"
+    id: string,        // instance id ("" for caches), used by open-folder
+}
+
 // Full-screen image viewer state. Any view calls `show(images, captions, index)`
 // to pop a clicked thumbnail up at full size, with prev/next over the supplied
 // ordered list. The overlay itself lives once at the top level in main.slint.
@@ -246,9 +257,9 @@ export global Logic {
     callback duplicate-instance(string /* id */);
     // name, game-version, loader ("" = vanilla), loader-version ("" = auto),
     // icon-id ("" / builtin id / "custom"), memory-mb ("" = default), jvm-args
-    callback create-instance(string, string, string, string, string, string, string);
+    callback create-instance(string /* name */, string /* version */, string /* loader */, string /* loader-ver */, string /* icon */, int /* memory-mb */, string /* jvm-args */);
     // id, name, jvm-args, java-path, pre-launch, post-exit, icon-id
-    callback edit-instance(string, string, string, string, string, string, string);
+    callback edit-instance(string /* id */, string /* name */, int /* memory-mb */, string /* jvm-args */, string /* java-path */, string /* pre-launch */, string /* post-exit */, string /* icon-id */);
     // Instance sorting ("name" / "last-played" / "playtime")
     in-out property <string> instance-sort: "name";
     callback sort-instances(string /* sort-key */);
@@ -314,7 +325,7 @@ export global Logic {
     // Create a new instance from a modpack: project-id, chosen name, icon-id
     // ("" / builtin id / "custom" / "modpack" for the pack's own icon), memory-mb,
     // jvm-args, version-id ("" = latest).
-    callback modrinth-create-instance(string, string, string, string, string, string);
+    callback modrinth-create-instance(string /* project-id */, string /* name */, string /* icon */, int /* memory-mb */, string /* jvm-args */, string /* version-id */);
     // Project detail view (gallery, body, versions, links).
     in property <ModrinthDetail> modrinth-detail;
     in property <bool> modrinth-detail-loading;
@@ -368,10 +379,25 @@ export global Logic {
     in-out property <string> active-theme;
     in property <[JavaRuntimeItem]> java-runtimes;
     in property <bool> java-installing;
-    callback save-settings(string /* game-dir */, string /* java-path */, string /* jvm-args */);
+    in-out property <int> download-concurrency: 16;
+    callback save-settings(string /* game-dir */, string /* java-path */, string /* jvm-args */, int /* download-concurrency */);
     callback select-theme(string);
     callback install-java(int /* major version */);
     callback use-java-runtime(int /* major */);
+
+    // --- Storage / resource management ---
+    // Total physical RAM in MB, used to bound the per-instance memory slider.
+    in property <int> system-ram-mb: 8192;
+    in property <[StorageItem]> storage-items;
+    in property <string> storage-total;     // formatted grand total
+    in property <bool> storage-scanning;
+    in property <string> storage-orphan-summary; // e.g. "12 files · 340 MB"
+    in property <bool> storage-has-orphans;
+    in-out property <bool> show-prune-dialog: false;
+    callback refresh-storage();
+    callback scan-orphans();
+    callback prune-cache();
+    callback open-instance-folder(string /* instance id */);
 
     // --- Crash diagnostics ---
     in-out property <bool> show-crash-dialog: false;

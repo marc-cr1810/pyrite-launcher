@@ -42,11 +42,13 @@ pub fn delete(state: &AppState, weak: &Weak<MainWindow>, id: String) {
 /// the per-instance launch overrides. Version/loader changes are intentionally
 /// out of scope here (they require re-resolving the loader profile).
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub fn edit(
     state: &AppState,
     weak: &Weak<MainWindow>,
     id: String,
     name: String,
+    memory_mb: i32,
     jvm_args: String,
     java_path: String,
     pre_launch: String,
@@ -70,7 +72,7 @@ pub fn edit(
     };
 
     inst.config.name = name;
-    inst.config.jvm_args = split_args(&jvm_args);
+    inst.config.jvm_args = build_jvm_args(memory_mb, &jvm_args);
     inst.config.java_path = none_if_blank(java_path);
     inst.config.pre_launch = none_if_blank(pre_launch);
     inst.config.post_exit = none_if_blank(post_exit);
@@ -144,27 +146,44 @@ pub(crate) fn apply_icon(state: &AppState, inst: &mut Instance, icon_id: &str) -
     Ok(())
 }
 
-/// Build the JVM args vector from a max-memory field (MB) plus extra args.
-/// Returns `None` when both are empty (so the field is omitted from the toml).
-pub(crate) fn build_jvm_args(memory_mb: &str, extra: &str) -> Option<Vec<String>> {
-    let mut args = Vec::new();
-    if let Ok(mb) = memory_mb.trim().parse::<u64>()
-        && mb > 0
-    {
-        args.push(format!("-Xmx{mb}M"));
-    }
-    args.extend(extra.split_whitespace().map(|a| a.to_string()));
-    if args.is_empty() {
-        None
-    } else {
-        Some(args)
+/// Parse a `-Xmx` value (e.g. `-Xmx4G`, `-Xmx4096M`) into megabytes. Returns
+/// `None` for unrecognized formats so callers can fall back to a default.
+pub(crate) fn parse_xmx_mb(arg: &str) -> Option<u64> {
+    let val = arg.strip_prefix("-Xmx")?;
+    let (num, unit) = val.split_at(val.find(|c: char| c.is_alphabetic()).unwrap_or(val.len()));
+    let num: u64 = num.trim().parse().ok()?;
+    match unit.to_ascii_lowercase().as_str() {
+        "g" => Some(num * 1024),
+        "m" | "" => Some(num),
+        "k" => Some(num / 1024),
+        _ => None,
     }
 }
 
-/// Split a whitespace-separated argument string into a vector, or `None` if it
-/// has no arguments (so the field is omitted from instance.toml).
-fn split_args(s: &str) -> Option<Vec<String>> {
-    let args: Vec<String> = s.split_whitespace().map(|a| a.to_string()).collect();
+/// Split a stored JVM-args list into a max-memory value (MB, from `-Xmx`) and the
+/// remaining space-joined arguments. Used to seed the memory slider separately
+/// from the free-form JVM-args field in the per-instance editor. Only `-Xmx` is
+/// extracted; every other argument (including `-Xms`) is preserved verbatim.
+pub(crate) fn split_memory_args(args: &[String]) -> (Option<u64>, String) {
+    let mut memory = None;
+    let mut rest = Vec::new();
+    for arg in args {
+        match parse_xmx_mb(arg) {
+            Some(mb) => memory = Some(mb), // keep the last -Xmx seen
+            None => rest.push(arg.clone()),
+        }
+    }
+    (memory, rest.join(" "))
+}
+
+/// Build the JVM args vector from a max-memory value (MB, 0 = unset) plus extra
+/// args. Returns `None` when both are empty (so the field is omitted from toml).
+pub(crate) fn build_jvm_args(memory_mb: i32, extra: &str) -> Option<Vec<String>> {
+    let mut args = Vec::new();
+    if memory_mb > 0 {
+        args.push(format!("-Xmx{memory_mb}M"));
+    }
+    args.extend(extra.split_whitespace().map(|a| a.to_string()));
     if args.is_empty() {
         None
     } else {
@@ -191,7 +210,7 @@ pub fn create(
     loader: String,
     loader_version: String,
     icon_id: String,
-    memory_mb: String,
+    memory_mb: i32,
     jvm_args: String,
 ) {
     let name = name.trim().to_string();
@@ -232,7 +251,7 @@ pub fn create(
             }
         };
 
-        inst.config.jvm_args = build_jvm_args(&memory_mb, &jvm_args);
+        inst.config.jvm_args = build_jvm_args(memory_mb, &jvm_args);
         if let Err(e) = apply_icon(&state, &mut inst, &icon_id) {
             status(&weak, format!("Instance created, but icon failed: {e}"));
         }

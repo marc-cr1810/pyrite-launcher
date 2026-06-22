@@ -14,10 +14,44 @@ use crate::core::api::{ModrinthProject, ModrinthSearchHit, ModrinthVersion};
 use crate::core::assets::{AssetInfo, ScreenshotInfo, WorldInfo};
 use crate::core::config::{AccountType, Config};
 use crate::core::instance::{Instance, InstanceMod};
+use crate::core::storage::{self, StorageReport};
 use crate::{
     AccountItem, AssetItem, BackupItem, FmtLine, FmtSpan, InstanceItem, JavaRuntimeItem, LogLine, ModItem,
-    ModrinthDetail, ModrinthHit, ScreenshotItem, WorldItem,
+    ModrinthDetail, ModrinthHit, ScreenshotItem, StorageItem, WorldItem,
 };
+
+/// Build the Storage-card model: one row per instance (largest first) followed
+/// by the shared caches. `bytes` is capped to i32::MAX for the Slint bar scale.
+pub fn storage_model(report: &StorageReport) -> ModelRc<StorageItem> {
+    let clamp = |b: u64| b.min(i32::MAX as u64) as i32;
+    let mut items: Vec<StorageItem> = report
+        .instances
+        .iter()
+        .map(|inst| StorageItem {
+            label: inst.name.clone().into(),
+            detail: storage::format_bytes(inst.bytes).into(),
+            bytes: clamp(inst.bytes),
+            kind: "instance".into(),
+            id: inst.id.clone().into(),
+        })
+        .collect();
+
+    for (label, bytes) in [
+        ("Versions", report.versions_bytes),
+        ("Libraries", report.libraries_bytes),
+        ("Assets", report.assets_bytes),
+    ] {
+        items.push(StorageItem {
+            label: label.into(),
+            detail: storage::format_bytes(bytes).into(),
+            bytes: clamp(bytes),
+            kind: "cache".into(),
+            id: SharedString::new(),
+        });
+    }
+
+    ModelRc::new(VecModel::from(items))
+}
 
 /// Glyph to render in place of the monogram for a built-in instance icon.
 /// Empty string means "no glyph" (use the monogram initial, or a custom image).
@@ -167,6 +201,12 @@ pub fn instances_model(config: &Config, sort_key: &str, search_query: &str) -> M
                 .map(|s| human_relative_time(s))
                 .unwrap_or_else(|| "Never".to_string());
             let playtime = human_duration(inst.config.total_playtime_secs);
+            // Split -Xmx out of the stored args so the editor can show memory on
+            // a slider and the remaining flags in the free-form field.
+            let (memory_mb, jvm_rest) = crate::app::controllers::instances::split_memory_args(
+                inst.config.jvm_args.as_deref().unwrap_or(&[]),
+            );
+            let memory_mb = memory_mb.unwrap_or(0);
             InstanceItem {
                 id: inst.id.clone().into(),
                 name: inst.config.name.clone().into(),
@@ -175,7 +215,8 @@ pub fn instances_model(config: &Config, sort_key: &str, search_query: &str) -> M
                 active: active.as_deref() == Some(inst.id.as_str()),
                 initial: initial(&inst.config.name),
                 avatar_color: avatar_color(&inst.id),
-                jvm_args: inst.config.jvm_args.as_deref().unwrap_or(&[]).join(" ").into(),
+                memory_mb: memory_mb as i32,
+                jvm_args: jvm_rest.into(),
                 java_path: inst.config.java_path.clone().unwrap_or_default().into(),
                 pre_launch: inst.config.pre_launch.clone().unwrap_or_default().into(),
                 post_exit: inst.config.post_exit.clone().unwrap_or_default().into(),

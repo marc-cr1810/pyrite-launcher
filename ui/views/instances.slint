@@ -1,7 +1,7 @@
 import { Theme, Logic, Lightbox, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
 import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
 import { ModrinthRow, ModrinthDetailPane } from "modrinth.slint";
-import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
+import { ScrollView, LineEdit, ComboBox, Slider } from "std-widgets.slint";
 
 // One tab in the detail-pane tab bar, with an underline accent when active.
 component TabButton inherits Rectangle {
@@ -166,6 +166,7 @@ export component InstancesView inherits Rectangle {
     property <image> sel-icon-image;
     // Editable fields, seeded from the selected instance on selection.
     property <string> edit-name;
+    property <int> edit-memory-mb;
     property <string> edit-jvm-args;
     property <string> edit-java-path;
     property <string> edit-pre-launch;
@@ -203,6 +204,7 @@ export component InstancesView inherits Rectangle {
         root.sel-icon-glyph = inst.icon-glyph;
         root.sel-icon-image = inst.icon-image;
         root.edit-name = inst.name;
+        root.edit-memory-mb = inst.memory-mb;
         root.edit-jvm-args = inst.jvm-args;
         root.edit-java-path = inst.java-path;
         root.edit-pre-launch = inst.pre-launch;
@@ -423,8 +425,24 @@ export component InstancesView inherits Rectangle {
                         Text { text: "Name"; color: Theme.text-muted; font-size: 12px; }
                         name-edit := LineEdit { text <=> root.edit-name; placeholder-text: "My instance"; }
 
+                        Text {
+                            text: round(mem-slider.value) == 0
+                                ? "Max memory: default"
+                                : "Max memory: \{round(mem-slider.value)} MB (\{round(mem-slider.value / 1024 * 10) / 10} GB)";
+                            color: Theme.text-muted; font-size: 12px;
+                        }
+                        mem-slider := Slider {
+                            minimum: 0;
+                            maximum: Logic.system-ram-mb;
+                            value: root.edit-memory-mb;
+                        }
+                        if Logic.system-ram-mb > 0 : Text {
+                            text: "Detected RAM: \{round(Logic.system-ram-mb / 1024 * 10) / 10} GB. 0 = launcher default.";
+                            color: Theme.text-dim; font-size: 11px;
+                        }
+
                         Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
-                        jvm-edit := LineEdit { text <=> root.edit-jvm-args; placeholder-text: "-Xmx4G -XX:+UseG1GC"; }
+                        jvm-edit := LineEdit { text <=> root.edit-jvm-args; placeholder-text: "-XX:+UseG1GC"; }
 
                         Text { text: "Java path"; color: Theme.text-muted; font-size: 12px; }
                         java-edit := LineEdit { text <=> root.edit-java-path; placeholder-text: "Leave blank to use the default Java"; }
@@ -455,6 +473,7 @@ export component InstancesView inherits Rectangle {
                                     Logic.edit-instance(
                                         root.selected-id,
                                         root.edit-name,
+                                        round(mem-slider.value),
                                         root.edit-jvm-args,
                                         root.edit-java-path,
                                         root.edit-pre-launch,
@@ -768,20 +787,24 @@ export component InstancesView inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
-            spacing: 12px;
-            VerticalLayout {
-                spacing: 6px;
-                width: 150px;
-                Text { text: "Max memory (MB)"; color: Theme.text-muted; font-size: 12px; }
-                mem-edit := LineEdit { input-type: number; placeholder-text: "e.g. 4096"; }
+        VerticalLayout {
+            spacing: 6px;
+            Text {
+                text: round(mem-create-slider.value) == 0
+                    ? "Max memory: default"
+                    : "Max memory: \{round(mem-create-slider.value)} MB";
+                color: Theme.text-muted; font-size: 12px;
             }
-            VerticalLayout {
-                spacing: 6px;
-                horizontal-stretch: 1;
-                Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
-                jvm-create-edit := LineEdit { placeholder-text: "-XX:+UseG1GC"; }
+            mem-create-slider := Slider {
+                minimum: 0;
+                maximum: Logic.system-ram-mb;
+                value: 2048;
             }
+        }
+        VerticalLayout {
+            spacing: 6px;
+            Text { text: "JVM arguments"; color: Theme.text-muted; font-size: 12px; }
+            jvm-create-edit := LineEdit { placeholder-text: "-XX:+UseG1GC"; }
         }
 
         HorizontalLayout {
@@ -804,12 +827,12 @@ export component InstancesView inherits Rectangle {
                         loader-combo.current-value == "Vanilla" ? ""
                             : (loaderver-combo.current-value == "Recommended" ? "" : loaderver-combo.current-value),
                         Logic.pending-icon-id,
-                        mem-edit.text,
+                        round(mem-create-slider.value),
                         jvm-create-edit.text);
                     root.dialog-open = false;
                     root.restore-icon-picker();
                     create-name-edit.text = "";
-                    mem-edit.text = "";
+                    mem-create-slider.value = 2048;
                     jvm-create-edit.text = "";
                 }
             }

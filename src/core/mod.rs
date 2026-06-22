@@ -17,3 +17,4 @@ pub mod java;
 pub mod instance;
 pub mod assets;
 pub mod crash_analyzer;
+pub mod storage;
