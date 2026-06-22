@@ -221,7 +221,8 @@ export component PlayView inherits VerticalLayout {
             VerticalLayout {
                 alignment: center;
                 PButton {
-                    text: Logic.game-running ? "Playing…" : Logic.is-busy ? "Working…" : "▶  Play";
+                    icon: Logic.game-running || Logic.is-busy ? "" : Icons.play;
+                    text: Logic.game-running ? "Playing…" : Logic.is-busy ? "Working…" : "Play";
                     primary: true;
                     enabled: Logic.can-play && !Logic.is-busy;
                     min-width: 170px;

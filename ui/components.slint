@@ -19,15 +19,23 @@ export component Icon inherits Text {
 //   (default) - bordered secondary surface
 export component PButton inherits Rectangle {
     in property <string> text;
+    in property <string> icon;     // optional leading Phosphor glyph (an Icons.* value)
     in property <bool> primary: false;
     in property <bool> danger: false;
     in property <bool> ghost: false;
     in property <bool> enabled: true;
     callback clicked();
 
+    // Shared by the label and the optional icon so they stay in lockstep.
+    property <color> content-color: !enabled
+        ? Theme.text-dim
+        : primary ? Theme.accent-text
+        : danger ? (touch.has-hover ? Theme.accent-text : Theme.error)
+        : Theme.text;
+
     height: 38px;
     horizontal-stretch: 0;
-    min-width: txt.preferred-width + 32px;
+    min-width: content.preferred-width + 32px;
     border-radius: Theme.radius-sm;
     background: !enabled
         ? (ghost ? transparent : Theme.surface-alt)
@@ -42,17 +50,21 @@ export component PButton inherits Rectangle {
     border-color: danger ? (touch.has-hover ? Theme.error : Theme.border) : Theme.border;
     animate background, border-color { duration: 120ms; }
 
-    txt := Text {
-        text: root.text;
-        color: !root.enabled
-            ? Theme.text-dim
-            : root.primary ? Theme.accent-text
-            : root.danger ? (touch.has-hover ? Theme.accent-text : Theme.error)
-            : Theme.text;
-        font-size: 14px;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    content := HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        if root.icon != "" : Icon {
+            icon: root.icon;
+            color: root.content-color;
+            font-size: 17px;
+        }
+        Text {
+            text: root.text;
+            color: root.content-color;
+            font-size: 14px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
     }
 
     touch := TouchArea {
