@@ -1,5 +1,16 @@
-import { Theme, Logic, Lightbox } from "globals.slint";
-import { Avatar, Dialog, PButton } from "components.slint";
+// Bundle fonts into the binary so text and icons render identically on every OS.
+// Without this the app falls back to the system default (Segoe UI on Windows),
+// which lacks the icon glyphs and shows tofu. The Slint compiler embeds imported
+// font files. Inter is the UI text font (set as the window default below) and
+// Phosphor is the icon font (used via the `Icon` component / `Icons.*` glyphs).
+import "../assets/fonts/Inter-Regular.ttf";
+import "../assets/fonts/Inter-Medium.ttf";
+import "../assets/fonts/Inter-SemiBold.ttf";
+import "../assets/fonts/Inter-Bold.ttf";
+import "../assets/fonts/Phosphor.ttf";
+
+import { Theme, Logic, Lightbox, Icons } from "globals.slint";
+import { Avatar, Dialog, PButton, Icon } from "components.slint";
 import { PlayView } from "views/play.slint";
 import { AccountsView } from "views/accounts.slint";
 import { InstancesView } from "views/instances.slint";
@@ -25,10 +36,9 @@ component NavItem inherits Rectangle {
         padding-left: 14px;
         padding-right: 14px;
         spacing: 12px;
-        Text {
-            text: root.icon;
-            font-size: 16px;
-            vertical-alignment: center;
+        Icon {
+            icon: root.icon;
+            font-size: 18px;
             color: root.selected ? Theme.accent : Theme.text-muted;
         }
         Text {
@@ -47,6 +57,7 @@ component NavItem inherits Rectangle {
 
 export component MainWindow inherits Window {
     title: "Pyrite Launcher";
+    default-font-family: "Inter";
     preferred-width: 1100px;
     preferred-height: 720px;
     min-width: 860px;
@@ -66,15 +77,15 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     padding-bottom: 16px;
                     spacing: 10px;
-                    Text { text: "◆"; color: Theme.accent; font-size: 22px; vertical-alignment: center; }
+                    Icon { icon: Icons.cube; color: Theme.accent; font-size: 24px; }
                     Text { text: "Pyrite"; color: Theme.text; font-size: 20px; font-weight: 800; vertical-alignment: center; }
                 }
-                NavItem { label: "Play"; icon: "▶"; selected: root.current-view == 0; clicked => { root.current-view = 0; } }
-                NavItem { label: "Instances"; icon: "▤"; selected: root.current-view == 1; clicked => { root.current-view = 1; } }
-                NavItem { label: "Accounts"; icon: "◴"; selected: root.current-view == 2; clicked => { root.current-view = 2; } }
-                NavItem { label: "Modrinth"; icon: "◈"; selected: root.current-view == 4; clicked => { root.current-view = 4; } }
+                NavItem { label: "Play"; icon: Icons.play; selected: root.current-view == 0; clicked => { root.current-view = 0; } }
+                NavItem { label: "Instances"; icon: Icons.grid; selected: root.current-view == 1; clicked => { root.current-view = 1; } }
+                NavItem { label: "Accounts"; icon: Icons.user; selected: root.current-view == 2; clicked => { root.current-view = 2; } }
+                NavItem { label: "Modrinth"; icon: Icons.package; selected: root.current-view == 4; clicked => { root.current-view = 4; } }
                 Rectangle { vertical-stretch: 1; }
-                NavItem { label: "Settings"; icon: "⚙"; selected: root.current-view == 3; clicked => { root.current-view = 3; } }
+                NavItem { label: "Settings"; icon: Icons.gear; selected: root.current-view == 3; clicked => { root.current-view = 3; } }
                 // Active account footer
                 Rectangle {
                     height: 1px;
@@ -230,7 +241,7 @@ export component MainWindow inherits Window {
             background: prev-touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
             border-width: 1px;
             border-color: Theme.border;
-            Text { text: "‹"; color: Theme.text; font-size: 26px; horizontal-alignment: center; vertical-alignment: center; }
+            Icon { icon: Icons.caret-left; color: Theme.text; font-size: 24px; }
             prev-touch := TouchArea {
                 mouse-cursor: pointer;
                 clicked => { Lightbox.prev(); }
@@ -245,7 +256,7 @@ export component MainWindow inherits Window {
             background: next-touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
             border-width: 1px;
             border-color: Theme.border;
-            Text { text: "›"; color: Theme.text; font-size: 26px; horizontal-alignment: center; vertical-alignment: center; }
+            Icon { icon: Icons.caret-right; color: Theme.text; font-size: 24px; }
             next-touch := TouchArea {
                 mouse-cursor: pointer;
                 clicked => { Lightbox.next(); }
@@ -262,7 +273,7 @@ export component MainWindow inherits Window {
             background: close-touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
             border-width: 1px;
             border-color: Theme.border;
-            Text { text: "✕"; color: Theme.text; font-size: 18px; horizontal-alignment: center; vertical-alignment: center; }
+            Icon { icon: Icons.close; color: Theme.text; font-size: 18px; }
             close-touch := TouchArea {
                 mouse-cursor: pointer;
                 clicked => { Lightbox.close(); }

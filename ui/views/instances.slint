@@ -1,5 +1,5 @@
-import { Theme, Logic, Lightbox, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
-import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker } from "../components.slint";
+import { Theme, Logic, Lightbox, Icons, InstanceItem, AssetItem, WorldItem, ScreenshotItem, ModItem, FmtLine } from "../globals.slint";
+import { Card, PButton, Avatar, LoaderBadge, EmptyState, Dialog, IconPicker, Icon } from "../components.slint";
 import { ModrinthRow, ModrinthDetailPane } from "modrinth.slint";
 import { ScrollView, LineEdit, ComboBox, Slider } from "std-widgets.slint";
 
@@ -71,7 +71,7 @@ component AssetSection inherits VerticalLayout {
     }
     if root.model.length == 0 : EmptyState {
         vertical-stretch: 1;
-        icon: "▦";
+        icon: Icons.image;
         title: root.empty-title;
         subtitle: "Add a file, or open the folder to drop one in.";
     }
@@ -97,7 +97,7 @@ component AssetSection inherits VerticalLayout {
                             border-radius: Theme.radius-sm;
                             background: Theme.surface;
                             clip: true;
-                            Text { width: 100%; height: 100%; text: "▦"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 18px; }
+                            Icon { width: 100%; height: 100%; icon: Icons.image; color: Theme.text-dim; font-size: 18px; }
                             Image { width: 100%; height: 100%; source: a.icon; image-fit: contain; }
                         }
                     }
@@ -282,7 +282,7 @@ export component InstancesView inherits Rectangle {
             Card {
                 vertical-stretch: 1;
                 if Logic.instances.length == 0 : EmptyState {
-                    icon: "▤";
+                    icon: Icons.grid;
                     title: "No instances yet";
                     subtitle: "Create one to choose a Minecraft version and mod loader.";
                 }
@@ -307,6 +307,7 @@ export component InstancesView inherits Rectangle {
                                     alignment: center;
                                     Avatar {
                                         initial: inst.icon-glyph != "" ? inst.icon-glyph : inst.initial;
+                                        icon-font: inst.icon-glyph != "";
                                         tint: inst.avatar-color;
                                         size: 38px;
                                         selected: inst.active;
@@ -327,8 +328,16 @@ export component InstancesView inherits Rectangle {
                                     HorizontalLayout {
                                         spacing: 8px;
                                         alignment: start;
-                                        Text { text: "▸ " + inst.last-played; color: Theme.text-dim; font-size: 10px; }
-                                        Text { text: "⏱ " + inst.playtime; color: Theme.text-dim; font-size: 10px; }
+                                        HorizontalLayout {
+                                            spacing: 3px;
+                                            Icon { icon: Icons.clock; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; }
+                                            Text { text: inst.last-played; color: Theme.text-dim; font-size: 10px; vertical-alignment: center; }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 3px;
+                                            Icon { icon: Icons.timer; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; }
+                                            Text { text: inst.playtime; color: Theme.text-dim; font-size: 10px; vertical-alignment: center; }
+                                        }
                                     }
                                 }
                                 if inst.active : VerticalLayout {
@@ -352,7 +361,7 @@ export component InstancesView inherits Rectangle {
             vertical-stretch: 1;
 
             if root.selected-id == "" : EmptyState {
-                icon: "✎";
+                icon: Icons.pencil;
                 title: "Select an instance";
                 subtitle: "Pick an instance on the left to view and edit its settings.";
             }
@@ -368,6 +377,7 @@ export component InstancesView inherits Rectangle {
                         alignment: center;
                         Avatar {
                             initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : root.sel-initial;
+                            icon-font: Logic.pending-icon-glyph != "";
                             tint: root.sel-color;
                             size: 52px;
                             selected: root.sel-active;
@@ -524,7 +534,7 @@ export component InstancesView inherits Rectangle {
                     }
                     if Logic.inst-worlds.length == 0 : EmptyState {
                         vertical-stretch: 1;
-                        icon: "◳"; title: "No worlds yet";
+                        icon: Icons.globe; title: "No worlds yet";
                         subtitle: "Worlds you create or import in-game appear here.";
                     }
                     if Logic.inst-worlds.length > 0 : ScrollView {
@@ -546,7 +556,7 @@ export component InstancesView inherits Rectangle {
                                             border-radius: Theme.radius-sm;
                                             background: Theme.surface;
                                             clip: true;
-                                            Text { width: 100%; height: 100%; text: "◳"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 22px; }
+                                            Icon { width: 100%; height: 100%; icon: Icons.globe; color: Theme.text-dim; font-size: 22px; }
                                             Image { width: 100%; height: 100%; source: w.icon; image-fit: cover; }
                                         }
                                     }
@@ -621,7 +631,7 @@ export component InstancesView inherits Rectangle {
                     }
                     if Logic.inst-mods.length == 0 : EmptyState {
                         vertical-stretch: 1;
-                        icon: "⬡"; title: "No mods installed";
+                        icon: Icons.puzzle; title: "No mods installed";
                         subtitle: "Add mod jars, or open the folder to drop some in.";
                     }
                     if Logic.inst-mods.length > 0 : ScrollView {
@@ -683,7 +693,7 @@ export component InstancesView inherits Rectangle {
                     }
                     if Logic.inst-screenshots.length == 0 : EmptyState {
                         vertical-stretch: 1;
-                        icon: "▱"; title: "No screenshots";
+                        icon: Icons.image; title: "No screenshots";
                         subtitle: "Screenshots you take in-game appear here.";
                     }
                     if Logic.inst-screenshots.length > 0 : ScrollView {
@@ -735,7 +745,7 @@ export component InstancesView inherits Rectangle {
                     }
                     if Logic.inst-backups.length == 0 : EmptyState {
                         vertical-stretch: 1;
-                        icon: "⟳"; title: "No backups yet";
+                        icon: Icons.archive; title: "No backups yet";
                         subtitle: "Create one before risky changes; restore reverts saves and config.";
                     }
                     if Logic.inst-backups.length > 0 : ScrollView {

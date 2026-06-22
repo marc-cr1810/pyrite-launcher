@@ -1,9 +1,10 @@
-import { Theme, Logic, LogLine, AccountItem, InstanceItem } from "../globals.slint";
-import { Card, PButton, PProgress, Avatar, Badge, LoaderBadge, EmptyState } from "../components.slint";
+import { Theme, Logic, Icons, LogLine, AccountItem, InstanceItem } from "../globals.slint";
+import { Card, PButton, PProgress, Avatar, Badge, LoaderBadge, EmptyState, Icon } from "../components.slint";
 import { ScrollView } from "std-widgets.slint";
 
 component PopupRow inherits Rectangle {
     in property <string> initial;
+    in property <bool> icon-font;
     in property <color> tint;
     in property <image> photo;
     in property <string> title;
@@ -19,7 +20,7 @@ component PopupRow inherits Rectangle {
         spacing: 10px;
         VerticalLayout {
             alignment: center;
-            Avatar { initial: root.initial; tint: root.tint; photo: root.photo; size: 32px; }
+            Avatar { initial: root.initial; icon-font: root.icon-font; tint: root.tint; photo: root.photo; size: 32px; }
         }
         VerticalLayout {
             alignment: center;
@@ -28,7 +29,7 @@ component PopupRow inherits Rectangle {
             Text { text: root.title; color: Theme.text; font-size: 14px; font-weight: 600; overflow: elide; }
             Text { text: root.subtitle; color: Theme.text-muted; font-size: 11px; overflow: elide; }
         }
-        if root.selected : Text { text: "✓"; color: Theme.accent; font-size: 14px; vertical-alignment: center; }
+        if root.selected : Icon { icon: Icons.check; color: Theme.accent; font-size: 15px; }
     }
     rowtouch := TouchArea {
         mouse-cursor: pointer;
@@ -45,6 +46,7 @@ component QuickSwitch inherits Rectangle {
     in property <string> kind; // "instance" | "account"
     in property <bool> show-avatar;
     in property <string> avatar-initial;
+    in property <bool> avatar-icon-font;
     in property <color> avatar-tint;
     in property <image> avatar-photo;
     horizontal-stretch: 1;
@@ -63,6 +65,7 @@ component QuickSwitch inherits Rectangle {
             alignment: center;
             Avatar {
                 initial: root.avatar-initial;
+                icon-font: root.avatar-icon-font;
                 tint: root.avatar-tint;
                 photo: root.avatar-photo;
                 size: 34px;
@@ -75,7 +78,7 @@ component QuickSwitch inherits Rectangle {
             Text { text: root.label; color: Theme.text-dim; font-size: 11px; font-weight: 600; }
             Text { text: root.value; color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide; }
         }
-        Text { text: "▾"; color: Theme.text-muted; font-size: 14px; vertical-alignment: center; }
+        Icon { icon: Icons.caret-down; color: Theme.text-muted; font-size: 14px; }
     }
 
     touch := TouchArea {
@@ -116,6 +119,7 @@ component QuickSwitch inherits Rectangle {
                         }
                         for inst in Logic.instances : PopupRow {
                             initial: inst.icon-glyph != "" ? inst.icon-glyph : inst.initial;
+                            icon-font: inst.icon-glyph != "";
                             tint: inst.avatar-color;
                             photo: inst.icon-image;
                             title: inst.name;
@@ -163,6 +167,7 @@ export component PlayView inherits VerticalLayout {
                     initial: Logic.active-instance-name == "" ? "?"
                         : Logic.active-instance-glyph != "" ? Logic.active-instance-glyph
                         : Logic.active-instance-initial;
+                    icon-font: Logic.active-instance-name != "" && Logic.active-instance-glyph != "";
                     tint: Logic.active-instance-name == "" ? Theme.text-dim : Logic.active-instance-color;
                     size: 72px;
                     photo: Logic.active-instance-image;
@@ -236,6 +241,7 @@ export component PlayView inherits VerticalLayout {
             kind: "instance";
             show-avatar: Logic.active-instance-name != "";
             avatar-initial: Logic.active-instance-glyph != "" ? Logic.active-instance-glyph : Logic.active-instance-initial;
+            avatar-icon-font: Logic.active-instance-glyph != "";
             avatar-tint: Logic.active-instance-color;
             avatar-photo: Logic.active-instance-image;
         }
@@ -292,7 +298,7 @@ export component PlayView inherits VerticalLayout {
                 spacing: 8px;
                 HorizontalLayout {
                     spacing: 8px;
-                    Text { text: "⚠"; color: crash-panel.accent; font-size: 16px; vertical-alignment: center; }
+                    Icon { icon: Icons.warning; color: crash-panel.accent; font-size: 17px; }
                     Text {
                         text: Logic.crash-title; color: Theme.text; font-size: 16px; font-weight: 700;
                         horizontal-stretch: 1; vertical-alignment: center; overflow: elide;

@@ -1,5 +1,5 @@
-import { Theme, Logic, Lightbox, ModrinthHit } from "../globals.slint";
-import { Card, PButton, Avatar, EmptyState, Dialog } from "../components.slint";
+import { Theme, Logic, Lightbox, Icons, ModrinthHit } from "../globals.slint";
+import { Card, PButton, Avatar, EmptyState, Dialog, Icon } from "../components.slint";
 import { ScrollView, LineEdit, ComboBox, Slider } from "std-widgets.slint";
 
 // A single Modrinth result row: thumbnail, title/description/meta, action button.
@@ -31,7 +31,7 @@ export component ModrinthRow inherits Rectangle {
                 border-radius: Theme.radius-sm;
                 background: Theme.surface;
                 clip: true;
-                Text { width: 100%; height: 100%; text: "◈"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 24px; }
+                Icon { width: 100%; height: 100%; icon: Icons.package; color: Theme.text-dim; font-size: 24px; }
                 Image { width: 100%; height: 100%; source: root.hit.icon; image-fit: contain; }
             }
         }
@@ -45,7 +45,7 @@ export component ModrinthRow inherits Rectangle {
                 spacing: 12px;
                 alignment: start;
                 Text { text: "by " + root.hit.author; color: Theme.text-dim; font-size: 11px; }
-                Text { text: "⭳ " + root.hit.downloads; color: Theme.text-dim; font-size: 11px; }
+                Text { text: "↓ " + root.hit.downloads; color: Theme.text-dim; font-size: 11px; }
             }
         }
         VerticalLayout {
@@ -86,7 +86,7 @@ export component ModrinthDetailPane inherits VerticalLayout {
             spacing: 14px;
             Rectangle {
                 width: 72px; height: 72px; border-radius: Theme.radius-sm; background: Theme.surface; clip: true;
-                Text { width: 100%; height: 100%; text: "◈"; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-dim; font-size: 30px; }
+                Icon { width: 100%; height: 100%; icon: Icons.package; color: Theme.text-dim; font-size: 30px; }
                 Image { width: 100%; height: 100%; source: Logic.modrinth-detail.icon; image-fit: contain; }
             }
             VerticalLayout {
@@ -98,7 +98,7 @@ export component ModrinthDetailPane inherits VerticalLayout {
                 HorizontalLayout {
                     spacing: 14px;
                     alignment: start;
-                    Text { text: "⭳ " + Logic.modrinth-detail.downloads; color: Theme.text-dim; font-size: 12px; }
+                    Text { text: "↓ " + Logic.modrinth-detail.downloads; color: Theme.text-dim; font-size: 12px; }
                     if Logic.modrinth-detail.updated != "" : Text { text: "updated " + Logic.modrinth-detail.updated; color: Theme.text-dim; font-size: 12px; }
                 }
                 if Logic.modrinth-detail.categories != "" : Text { text: Logic.modrinth-detail.categories; color: Theme.text-dim; font-size: 11px; overflow: elide; }
@@ -230,7 +230,7 @@ export component ModrinthView inherits Rectangle {
 
             if Logic.modrinth-results.length == 0 && !Logic.modrinth-loading : EmptyState {
                 vertical-stretch: 1;
-                icon: "◈";
+                icon: Icons.package;
                 title: "Browse Modrinth modpacks";
                 subtitle: "Search for a modpack and create a configurable instance from it.";
             }
@@ -285,6 +285,7 @@ export component ModrinthView inherits Rectangle {
                 alignment: start;
                 Avatar {
                     initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : (root.create-name == "" ? "?" : root.create-name);
+                    icon-font: Logic.pending-icon-glyph != "";
                     tint: Theme.accent;
                     size: 56px;
                     photo: Logic.pending-icon-id == "modpack" ? root.pending-pack.icon
@@ -307,7 +308,7 @@ export component ModrinthView inherits Rectangle {
                         border-width: 1px;
                         border-color: Logic.pending-icon-id == opt.id ? Theme.accent : Theme.border;
                         animate background, border-color { duration: 100ms; }
-                        Text { text: opt.glyph; color: Theme.text; font-size: 17px; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: opt.glyph; color: Theme.text; font-family: Icons.font; font-size: 19px; horizontal-alignment: center; vertical-alignment: center; }
                         sw := TouchArea {
                             mouse-cursor: pointer;
                             clicked => { Logic.pending-icon-id = opt.id; Logic.pending-icon-glyph = opt.glyph; }

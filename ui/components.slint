@@ -1,6 +1,16 @@
 // Reusable themed building blocks. All colors come from `Theme`.
-import { Theme, Logic } from "globals.slint";
+import { Theme, Logic, Icons } from "globals.slint";
 import { ScrollView } from "std-widgets.slint";
+
+// A single Phosphor icon. Pass one of the `Icons.*` glyph constants.
+export component Icon inherits Text {
+    in property <string> icon;
+    text: root.icon;
+    font-family: Icons.font;
+    horizontal-alignment: center;
+    vertical-alignment: center;
+    color: Theme.text;
+}
 
 // Push button with visual variants:
 //   primary  - filled accent (main call to action)
@@ -116,6 +126,9 @@ export component Avatar inherits Rectangle {
     in property <length> size: 40px;
     in property <bool> selected: false;
     in property <image> photo;   // optional; overlays the monogram once loaded
+    // When the `initial` is a Phosphor icon glyph (a built-in instance icon)
+    // rather than a letter, render it in the icon font instead of the UI font.
+    in property <bool> icon-font: false;
     width: root.size;
     height: root.size;
     // Rounded square (player heads are square), not a circle.
@@ -128,7 +141,8 @@ export component Avatar inherits Rectangle {
     Text {
         text: root.initial;
         color: root.tint;
-        font-size: root.size * 0.42;
+        font-family: root.icon-font ? Icons.font : "";
+        font-size: root.size * (root.icon-font ? 0.55 : 0.42);
         font-weight: 700;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -183,7 +197,7 @@ export component EmptyState inherits VerticalLayout {
     spacing: 8px;
     HorizontalLayout {
         alignment: center;
-        Text { text: root.icon; font-size: 40px; color: Theme.text-dim; }
+        Text { text: root.icon; font-family: Icons.font; font-size: 40px; color: Theme.text-dim; }
     }
     Text {
         text: root.title;
@@ -226,6 +240,7 @@ export component IconPicker inherits VerticalLayout {
             alignment: start;
             Avatar {
                 initial: Logic.pending-icon-glyph != "" ? Logic.pending-icon-glyph : root.derived-initial;
+                icon-font: Logic.pending-icon-glyph != "";
                 tint: root.derived-color;
                 size: 56px;
                 photo: Logic.pending-icon-id == "custom" ? Logic.pending-icon-image : root.no-image;
@@ -254,7 +269,8 @@ export component IconPicker inherits VerticalLayout {
                     Text {
                         text: opt.glyph;
                         color: Theme.text;
-                        font-size: 17px;
+                        font-family: Icons.font;
+                        font-size: 19px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }

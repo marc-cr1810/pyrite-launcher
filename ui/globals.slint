@@ -233,6 +233,33 @@ export global Theme {
     out property <length> pad: 16px;
 }
 
+// Phosphor icon font (bundled in assets/fonts, embedded by the Slint compiler).
+// Glyphs live in the Unicode Private Use Area, so they only render in this font
+// — always set `font-family: Icons.font` (or use the `Icon` component) on a Text
+// that shows one of these. Codepoints come from @phosphor-icons/web (regular).
+export global Icons {
+    out property <string> font: "Phosphor";
+    out property <string> cube: "\u{e1da}";        // logo / instance placeholder
+    out property <string> play: "\u{e3d0}";
+    out property <string> grid: "\u{e464}";        // squares-four (instances)
+    out property <string> user: "\u{e4c4}";        // user-circle (accounts)
+    out property <string> package: "\u{e390}";     // modrinth
+    out property <string> gear: "\u{e272}";        // gear-six (settings)
+    out property <string> caret-left: "\u{e138}";
+    out property <string> caret-right: "\u{e13a}";
+    out property <string> caret-down: "\u{e136}";
+    out property <string> close: "\u{e4f6}";       // x
+    out property <string> check: "\u{e182}";
+    out property <string> pencil: "\u{e3b4}";      // pencil-simple (edit)
+    out property <string> globe: "\u{e288}";       // worlds
+    out property <string> puzzle: "\u{e596}";      // puzzle-piece (mods)
+    out property <string> image: "\u{e2ca}";       // screenshots / thumbnails
+    out property <string> archive: "\u{e00c}";     // backups
+    out property <string> timer: "\u{e492}";       // playtime
+    out property <string> clock: "\u{e1a0}";       // clock-counter-clockwise (last played)
+    out property <string> warning: "\u{e4e0}";
+}
+
 // Single bridge between the UI and Rust: shared state (properties Rust pushes
 // into the UI) and callbacks (events the UI sends to Rust). Wired in main.rs.
 export global Logic {

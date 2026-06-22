@@ -1,4 +1,4 @@
-import { Theme, Logic, AccountItem } from "../globals.slint";
+import { Theme, Logic, Icons, AccountItem } from "../globals.slint";
 import { Card, PButton, Avatar, Badge, EmptyState, Dialog } from "../components.slint";
 import { ScrollView, LineEdit } from "std-widgets.slint";
 
@@ -46,7 +46,7 @@ export component AccountsView inherits Rectangle {
         Card {
             vertical-stretch: 1;
             if Logic.accounts.length == 0 : EmptyState {
-                icon: "◑";
+                icon: Icons.user;
                 title: "No accounts yet";
                 subtitle: "Add a Microsoft account to play online, or an offline name for local play.";
             }
