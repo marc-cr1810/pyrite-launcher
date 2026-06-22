@@ -77,6 +77,8 @@ component AssetSection inherits VerticalLayout {
     }
     if root.model.length > 0 : ScrollView {
         vertical-stretch: 1;
+        // Pin viewport to visible width so long descriptions can't widen rows off-screen.
+        viewport-width: self.visible-width;
         VerticalLayout {
             spacing: 6px;
             for a in root.model : Rectangle {
@@ -624,13 +626,17 @@ export component InstancesView inherits Rectangle {
                     }
                     if Logic.inst-mods.length > 0 : ScrollView {
                         vertical-stretch: 1;
+                        // Pin viewport to the visible width so a long (non-eliding)
+                        // mod description can't widen rows off-screen; rows clip.
+                        viewport-width: self.visible-width;
                         VerticalLayout {
                             spacing: 6px;
                             for m in Logic.inst-mods : Rectangle {
-                                height: 72px;
+                                // Grow with the (wrapping) description; keep a floor
+                                // so short rows stay compact.
+                                min-height: 72px;
                                 border-radius: Theme.radius-sm;
                                 background: Theme.surface-alt;
-                                clip: true;
                                 HorizontalLayout {
                                     padding: 10px;
                                     spacing: 10px;
@@ -639,7 +645,10 @@ export component InstancesView inherits Rectangle {
                                         horizontal-stretch: 1;
                                         spacing: 2px;
                                         Text { text: m.name; color: m.enabled ? Theme.text : Theme.text-dim; font-size: 14px; font-weight: 600; overflow: elide; }
-                                        if m.description != "" : FormattedText { lines: m.desc-lines; }
+                                        if m.description != "" : Text {
+                                            text: m.description;
+                                            color: Theme.text-muted; font-size: 11px; wrap: word-wrap;
+                                        }
                                     }
                                     VerticalLayout {
                                         alignment: center;
