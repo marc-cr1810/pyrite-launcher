@@ -357,6 +357,10 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
     }
     {
         let st = state.clone();
+        logic.on_stop_game(move || launch::stop_game(&st));
+    }
+    {
+        let st = state.clone();
         let weak = ui.as_weak();
         logic.on_clear_logs(move || launch::clear_logs(&st, &weak));
     }

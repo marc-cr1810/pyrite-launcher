@@ -20,6 +20,9 @@ pub struct AppState {
     pub active_theme: Arc<Mutex<String>>,
     /// True while a download/launch is running, to prevent overlapping launches.
     pub busy: Arc<Mutex<bool>>,
+    /// PID of the live game process while it runs, so the Play view's Stop
+    /// button can force-quit it. `None` whenever no game is running.
+    pub running_pid: Arc<Mutex<Option<u32>>>,
     /// Set when the user cancels the Microsoft device-code login.
     pub ms_cancel: Arc<AtomicBool>,
     /// Live game-log buffer. Background readers append here; a UI-thread timer

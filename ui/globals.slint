@@ -422,6 +422,8 @@ export global Logic {
     in property <string> active-instance-loader;
     in property <string> active-instance-glyph;   // built-in icon glyph, or ""
     in property <image> active-instance-image;     // custom icon, or empty
+    in property <string> active-instance-last-played; // human-relative ("2h ago"/"Never")
+    in property <string> active-instance-playtime;    // human duration ("2h 15m"/"—")
     in property <bool> can-play;
 
     // --- Launch / progress / logs ---
@@ -433,6 +435,7 @@ export global Logic {
     in property <float> progress-value;     // 0..1
     in property <[LogLine]> log-lines;
     callback play();
+    callback stop-game();   // force-quit the running game process
     callback clear-logs();
     callback copy-logs();
 

@@ -53,6 +53,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         themes,
         active_theme: Arc::new(Mutex::new(active_theme.clone())),
         busy: Arc::new(Mutex::new(false)),
+        running_pid: Arc::new(Mutex::new(None)),
         ms_cancel: Arc::new(AtomicBool::new(false)),
         log_buf: Arc::new(Mutex::new(Vec::new())),
         log_dirty: Arc::new(AtomicBool::new(false)),

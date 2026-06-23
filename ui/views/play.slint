@@ -37,111 +37,62 @@ component PopupRow inherits Rectangle {
     }
 }
 
-// Quick-switch control: shows a labeled current value and opens a popup list of
-// instances or accounts (driven by `kind`), reusing the existing select-*
-// callbacks. Clicking a row selects it and auto-closes the popup.
-component QuickSwitch inherits Rectangle {
-    in property <string> label;
-    in property <string> value;
+// The instance/account picker list, shared by both hero triggers. Lives as a
+// child of a trigger element; call `.show()` from that trigger's TouchArea.
+// Position (x/y/width) is set where it's instantiated, relative to the trigger.
+component SelectorPopup inherits PopupWindow {
     in property <string> kind; // "instance" | "account"
-    in property <bool> show-avatar;
-    in property <string> avatar-initial;
-    in property <bool> avatar-icon-font;
-    in property <color> avatar-tint;
-    in property <image> avatar-photo;
-    horizontal-stretch: 1;
-    height: 56px;
-    border-radius: Theme.radius-sm;
-    background: touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
-    border-width: 1px;
-    border-color: Theme.border;
-    animate background { duration: 100ms; }
-
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 14px;
-        spacing: 10px;
-        if root.show-avatar : VerticalLayout {
-            alignment: center;
-            Avatar {
-                initial: root.avatar-initial;
-                icon-font: root.avatar-icon-font;
-                tint: root.avatar-tint;
-                photo: root.avatar-photo;
-                size: 34px;
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            spacing: 2px;
-            horizontal-stretch: 1;
-            Text { text: root.label; color: Theme.text-dim; font-size: 11px; font-weight: 600; }
-            Text { text: root.value; color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide; }
-        }
-        Icon { icon: Icons.caret-down; color: Theme.text-muted; font-size: 14px; }
-    }
-
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { popup.show(); }
-    }
-
-    popup := PopupWindow {
-        x: 0;
-        y: parent.height + 4px;
-        width: root.width;
-        // Size the popup to its content (capped), so the opaque background and
-        // hit area actually cover the rows instead of overflowing the page.
-        height: min(280px, list.preferred-height);
-        Rectangle {
+    // Size the popup to its content (capped) so the opaque background and hit
+    // area cover the rows instead of overflowing the page.
+    height: min(280px, list.preferred-height);
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.surface;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-color: #00000066;
+        drop-shadow-blur: 20px;
+        drop-shadow-offset-y: 6px;
+        clip: true;
+        ScrollView {
             width: 100%;
             height: 100%;
-            background: Theme.surface;
-            border-radius: Theme.radius;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-color: #00000066;
-            drop-shadow-blur: 20px;
-            drop-shadow-offset-y: 6px;
-            clip: true;
-            ScrollView {
+            list := VerticalLayout {
                 width: 100%;
-                height: 100%;
-                list := VerticalLayout {
-                    width: 100%;
-                    padding: 6px;
-                    spacing: 2px;
+                padding: 6px;
+                spacing: 2px;
 
-                    if root.kind == "instance" : VerticalLayout {
-                        spacing: 2px;
-                        if Logic.instances.length == 0 : Text {
-                            text: "No instances"; color: Theme.text-dim; font-size: 12px;
-                        }
-                        for inst in Logic.instances : PopupRow {
-                            initial: inst.icon-glyph != "" ? inst.icon-glyph : inst.initial;
-                            icon-font: inst.icon-glyph != "";
-                            tint: inst.avatar-color;
-                            photo: inst.icon-image;
-                            title: inst.name;
-                            subtitle: inst.version + (inst.loader == "" ? "" : "  •  " + inst.loader);
-                            selected: inst.active;
-                            clicked => { Logic.select-instance(inst.id); }
-                        }
+                if root.kind == "instance" : VerticalLayout {
+                    spacing: 2px;
+                    if Logic.instances.length == 0 : Text {
+                        text: "No instances"; color: Theme.text-dim; font-size: 12px;
                     }
-                    if root.kind == "account" : VerticalLayout {
-                        spacing: 2px;
-                        if Logic.accounts.length == 0 : Text {
-                            text: "No accounts"; color: Theme.text-dim; font-size: 12px;
-                        }
-                        for acc in Logic.accounts : PopupRow {
-                            initial: acc.initial;
-                            tint: acc.avatar-color;
-                            photo: acc.avatar;
-                            title: acc.username;
-                            subtitle: acc.kind;
-                            selected: acc.active;
-                            clicked => { Logic.select-account(acc.uuid); }
-                        }
+                    for inst in Logic.instances : PopupRow {
+                        initial: inst.icon-glyph != "" ? inst.icon-glyph : inst.initial;
+                        icon-font: inst.icon-glyph != "";
+                        tint: inst.avatar-color;
+                        photo: inst.icon-image;
+                        title: inst.name;
+                        subtitle: inst.version + (inst.loader == "" ? "" : "  •  " + inst.loader);
+                        selected: inst.active;
+                        clicked => { Logic.select-instance(inst.id); }
+                    }
+                }
+                if root.kind == "account" : VerticalLayout {
+                    spacing: 2px;
+                    if Logic.accounts.length == 0 : Text {
+                        text: "No accounts"; color: Theme.text-dim; font-size: 12px;
+                    }
+                    for acc in Logic.accounts : PopupRow {
+                        initial: acc.initial;
+                        tint: acc.avatar-color;
+                        photo: acc.avatar;
+                        title: acc.username;
+                        subtitle: acc.kind;
+                        selected: acc.active;
+                        clicked => { Logic.select-account(acc.uuid); }
                     }
                 }
             }
@@ -153,107 +104,176 @@ export component PlayView inherits VerticalLayout {
     padding: 24px;
     spacing: 20px;
 
-    // ---- Hero: identity + the one big action ----
-    Card {
-        height: 168px;
-        HorizontalLayout {
-            padding: 24px;
-            spacing: 20px;
+    property <bool> errors-only: false;
 
-            // Instance identity
-            VerticalLayout {
-                alignment: center;
-                Avatar {
-                    initial: Logic.active-instance-name == "" ? "?"
-                        : Logic.active-instance-glyph != "" ? Logic.active-instance-glyph
-                        : Logic.active-instance-initial;
-                    icon-font: Logic.active-instance-name != "" && Logic.active-instance-glyph != "";
-                    tint: Logic.active-instance-name == "" ? Theme.text-dim : Logic.active-instance-color;
-                    size: 72px;
-                    photo: Logic.active-instance-image;
+    // ---- Hero: identity + selection + the one big action ----
+    Card {
+        height: 150px;
+        HorizontalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            // Instance identity — click to switch instances. A bare Rectangle
+            // doesn't adopt its child layout's size, so bind the width to the
+            // inner content; that keeps the caret hugging the name.
+            inst-trigger := Rectangle {
+                horizontal-stretch: 0;
+                width: inst-inner.preferred-width;
+                border-radius: Theme.radius-sm;
+                background: inst-touch.has-hover ? Theme.surface-hover : transparent;
+                animate background { duration: 100ms; }
+                inst-inner := HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 10px;
+                    spacing: 14px;
+                    VerticalLayout {
+                        alignment: center;
+                        Avatar {
+                            initial: Logic.active-instance-name == "" ? "?"
+                                : Logic.active-instance-glyph != "" ? Logic.active-instance-glyph
+                                : Logic.active-instance-initial;
+                            icon-font: Logic.active-instance-name != "" && Logic.active-instance-glyph != "";
+                            tint: Logic.active-instance-name == "" ? Theme.text-dim : Logic.active-instance-color;
+                            size: 64px;
+                            photo: Logic.active-instance-image;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 6px;
+                        Text {
+                            text: Logic.active-instance-name == "" ? "No instance selected" : Logic.active-instance-name;
+                            color: Theme.text;
+                            font-size: 22px;
+                            font-weight: 700;
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            Text {
+                                text: Logic.active-instance-version == "" ? "—" : Logic.active-instance-version;
+                                color: Theme.text-muted;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+                            if Logic.active-instance-loader != "" : LoaderBadge {
+                                loader: Logic.active-instance-loader;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Icon { icon: Icons.caret-down; color: Theme.text-muted; font-size: 14px; }
+                    }
+                }
+                inst-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { inst-popup.show(); }
+                }
+                inst-popup := SelectorPopup {
+                    kind: "instance";
+                    x: 0;
+                    y: parent.height + 6px;
+                    width: 320px;
                 }
             }
 
-            VerticalLayout {
+            // At-a-glance playtime stats, sitting alongside the identity (only
+            // meaningful with an instance selected).
+            if Logic.active-instance-name != "" : VerticalLayout {
                 alignment: center;
                 spacing: 8px;
-                Text {
-                    text: Logic.active-instance-name == "" ? "No instance selected" : Logic.active-instance-name;
-                    color: Theme.text;
-                    font-size: 22px;
-                    font-weight: 700;
-                    overflow: elide;
+                horizontal-stretch: 0;
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    Icon { icon: Icons.clock; color: Theme.text-dim; font-size: 13px; }
+                    Text {
+                        text: Logic.active-instance-last-played == "" ? "Never" : Logic.active-instance-last-played;
+                        color: Theme.text-muted; font-size: 13px; vertical-alignment: center;
+                    }
                 }
                 HorizontalLayout {
-                    spacing: 10px;
+                    spacing: 6px;
                     alignment: start;
+                    Icon { icon: Icons.timer; color: Theme.text-dim; font-size: 13px; }
                     Text {
-                        text: Logic.active-instance-version == "" ? "—" : Logic.active-instance-version;
-                        color: Theme.text-muted;
-                        font-size: 14px;
-                        vertical-alignment: center;
-                    }
-                    if Logic.active-instance-loader != "" : LoaderBadge {
-                        loader: Logic.active-instance-loader;
-                    }
-                }
-                // Account line with mini avatar.
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: start;
-                    if Logic.active-account-name != "" : Avatar {
-                        initial: Logic.active-account-initial;
-                        tint: Logic.active-account-color;
-                        size: 22px;
-                        photo: Logic.active-account-avatar;
-                    }
-                    Text {
-                        text: Logic.active-account-name == "" ? "Not signed in" : Logic.active-account-name;
-                        color: Theme.text-muted;
-                        font-size: 13px;
-                        vertical-alignment: center;
+                        text: Logic.active-instance-playtime == "" ? "—" : Logic.active-instance-playtime;
+                        color: Theme.text-muted; font-size: 13px; vertical-alignment: center;
                     }
                 }
             }
 
-            Rectangle { } // spacer
+            // Push the account + Play controls to the right edge.
+            Rectangle { horizontal-stretch: 1; }
+
+            // Account — click to switch accounts. Width bound to its content for
+            // the same reason as the instance trigger.
+            acc-trigger := Rectangle {
+                horizontal-stretch: 0;
+                width: acc-inner.preferred-width;
+                border-radius: Theme.radius-sm;
+                background: acc-touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
+                border-width: 1px;
+                border-color: Theme.border;
+                animate background { duration: 100ms; }
+                acc-inner := HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 10px;
+                    if Logic.active-account-name != "" : VerticalLayout {
+                        alignment: center;
+                        Avatar {
+                            initial: Logic.active-account-initial;
+                            tint: Logic.active-account-color;
+                            size: 34px;
+                            photo: Logic.active-account-avatar;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text { text: "Account"; color: Theme.text-dim; font-size: 11px; font-weight: 600; }
+                        Text {
+                            text: Logic.active-account-name == "" ? "Select…" : Logic.active-account-name;
+                            color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Icon { icon: Icons.caret-down; color: Theme.text-muted; font-size: 14px; }
+                    }
+                }
+                acc-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { acc-popup.show(); }
+                }
+                acc-popup := SelectorPopup {
+                    kind: "account";
+                    x: 0;
+                    y: parent.height + 6px;
+                    width: 280px;
+                }
+            }
 
             VerticalLayout {
                 alignment: center;
                 PButton {
                     icon: Logic.game-running || Logic.is-busy ? "" : Icons.play;
-                    text: Logic.game-running ? "Playing…" : Logic.is-busy ? "Working…" : "Play";
-                    primary: true;
-                    enabled: Logic.can-play && !Logic.is-busy;
+                    text: Logic.game-running ? "Stop" : Logic.is-busy ? "Working…" : "Play";
+                    primary: !Logic.game-running;
+                    danger: Logic.game-running;
+                    // Stop is always actionable while the game lives; Play needs a
+                    // valid selection and no launch already in flight.
+                    enabled: Logic.game-running || (Logic.can-play && !Logic.is-busy);
                     min-width: 170px;
                     height: 56px;
-                    clicked => { Logic.play(); }
+                    clicked => {
+                        if (Logic.game-running) { Logic.stop-game(); } else { Logic.play(); }
+                    }
                 }
             }
-        }
-    }
-
-    // ---- Quick-switch row ----
-    HorizontalLayout {
-        spacing: 14px;
-        QuickSwitch {
-            label: "Instance";
-            value: Logic.active-instance-name == "" ? "Select…" : Logic.active-instance-name;
-            kind: "instance";
-            show-avatar: Logic.active-instance-name != "";
-            avatar-initial: Logic.active-instance-glyph != "" ? Logic.active-instance-glyph : Logic.active-instance-initial;
-            avatar-icon-font: Logic.active-instance-glyph != "";
-            avatar-tint: Logic.active-instance-color;
-            avatar-photo: Logic.active-instance-image;
-        }
-        QuickSwitch {
-            label: "Account";
-            value: Logic.active-account-name == "" ? "Select…" : Logic.active-account-name;
-            kind: "account";
-            show-avatar: Logic.active-account-name != "";
-            avatar-initial: Logic.active-account-initial;
-            avatar-tint: Logic.active-account-color;
-            avatar-photo: Logic.active-account-avatar;
         }
     }
 
@@ -397,27 +417,31 @@ export component PlayView inherits VerticalLayout {
             text: errors-only ? "Show all" : "Errors only";
             ghost: true;
             height: 28px;
+            enabled: Logic.log-lines.length > 0;
             clicked => { errors-only = !errors-only; }
         }
-        PButton { text: "Copy"; ghost: true; height: 28px; clicked => { Logic.copy-logs(); } }
-        PButton { text: "Clear"; ghost: true; height: 28px; clicked => { Logic.clear-logs(); } }
+        PButton { text: "Copy"; ghost: true; height: 28px; enabled: Logic.log-lines.length > 0; clicked => { Logic.copy-logs(); } }
+        PButton { text: "Clear"; ghost: true; height: 28px; enabled: Logic.log-lines.length > 0; clicked => { Logic.clear-logs(); } }
     }
-    property <bool> errors-only: false;
 
+    // The log fills the remaining page. When there's no output it shows a
+    // centered empty state (rather than a bare black box) so the space reads
+    // as intentional; once lines stream in it switches to the scrolling view.
     Card {
         vertical-stretch: 1;
         clip: true;
-        log-scroll := ScrollView {
+        if Logic.log-lines.length == 0 : EmptyState {
+            icon: Icons.play;
+            title: "No output yet";
+            subtitle: "Press Play to launch — the game's log will stream here.";
+        }
+        if Logic.log-lines.length > 0 : log-scroll := ScrollView {
             changed viewport-height => {
                 self.viewport-y = min(0, self.visible-height - self.viewport-height);
             }
             VerticalLayout {
                 padding: 12px;
                 spacing: 2px;
-                if Logic.log-lines.length == 0 : Text {
-                    text: "No output yet. Press Play to launch.";
-                    color: Theme.text-dim; font-size: 12px;
-                }
                 for line in Logic.log-lines : Rectangle {
                     property <bool> shown: !root.errors-only || line.level == "error" || line.level == "warn";
                     height: shown ? txt.preferred-height : 0;

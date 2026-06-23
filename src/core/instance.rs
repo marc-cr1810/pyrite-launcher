@@ -1142,18 +1142,28 @@ fn read_mod_relations(jar_path: &Path) -> Option<ModRelations> {
     let mut archive = zip::ZipArchive::new(file).ok()?;
 
     // Fabric / Quilt.
-    if let Ok(mut f) = archive.by_name("fabric.mod.json") {
+    let fabric_manifest = {
         let mut content = String::new();
-        if f.read_to_string(&mut content).is_ok()
-            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
-        {
+        match archive.by_name("fabric.mod.json") {
+            Ok(mut f) => f.read_to_string(&mut content).ok().map(|_| content),
+            Err(_) => None,
+        }
+    };
+    if let Some(content) = fabric_manifest {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
             let id = json["id"].as_str().unwrap_or("").to_string();
             if !id.is_empty() {
                 let name = json["name"].as_str().unwrap_or(&id).to_string();
-                let provides = json["provides"]
+                let mut provides: Vec<String> = json["provides"]
                     .as_array()
                     .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
                     .unwrap_or_default();
+                // Fabric API (and many libs) ship their sub-modules as jar-in-jar
+                // bundles under `META-INF/jars/`. Those nested manifests declare ids
+                // like `fabric-key-binding-api-v1` that other mods depend on, so fold
+                // every bundled id/provide into this jar's provided set — otherwise we
+                // would flag them as missing even though they're installed.
+                collect_nested_provides(&mut archive, &mut provides);
                 let depends = json["depends"]
                     .as_object()
                     .map(|o| {
@@ -1217,6 +1227,45 @@ fn read_mod_relations(jar_path: &Path) -> Option<ModRelations> {
     }
 
     None
+}
+
+/// Recursively collect the ids and `provides` declared by jar-in-jar bundles
+/// under `META-INF/jars/`, appending them to `acc`. This lets Fabric API's
+/// bundled modules (`fabric-key-binding-api-v1`, …) and any other JIJ'd library
+/// count as installed during the pre-flight dependency check.
+fn collect_nested_provides<R: Read + io::Seek>(archive: &mut zip::ZipArchive<R>, acc: &mut Vec<String>) {
+    // Snapshot the nested jar entry names first so we don't hold a borrow on the
+    // archive while reading each one out.
+    let nested: Vec<String> = (0..archive.len())
+        .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
+        .filter(|name| name.starts_with("META-INF/jars/") && name.ends_with(".jar"))
+        .collect();
+
+    for name in nested {
+        let mut bytes = Vec::new();
+        {
+            let Ok(mut entry) = archive.by_name(&name) else { continue };
+            if entry.read_to_end(&mut bytes).is_err() {
+                continue;
+            }
+        }
+        let Ok(mut inner) = zip::ZipArchive::new(io::Cursor::new(bytes)) else { continue };
+        // The nested mod's own id plus what it provides.
+        let mut content = String::new();
+        if let Ok(mut f) = inner.by_name("fabric.mod.json")
+            && f.read_to_string(&mut content).is_ok()
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+        {
+            if let Some(id) = json["id"].as_str() {
+                acc.push(id.to_string());
+            }
+            if let Some(arr) = json["provides"].as_array() {
+                acc.extend(arr.iter().filter_map(|v| v.as_str().map(str::to_string)));
+            }
+        }
+        // Bundles can themselves bundle further jars.
+        collect_nested_provides(&mut inner, acc);
+    }
 }
 
 pub fn read_mod_metadata(jar_path: &Path) -> Result<ModMetadata, String> {
@@ -1400,6 +1449,43 @@ description = "A forge mod"
         assert_eq!(meta.name, "Test Forge Mod");
         assert_eq!(meta.version, "2.3.4");
         assert_eq!(meta.description, Some("A forge mod".to_string()));
+
+        let _ = fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn test_nested_jij_modules_count_as_provided() {
+        // Mimic a Fabric API jar: a top-level manifest plus a bundled jar-in-jar
+        // module under META-INF/jars/. The nested module's id must be picked up
+        // as provided so dependents on it aren't flagged as missing.
+        let temp_path = std::env::temp_dir().join("minecli_test_jij.jar");
+        {
+            // Build the nested module jar in memory first.
+            let mut inner_buf = Vec::new();
+            {
+                let mut inner = zip::ZipWriter::new(io::Cursor::new(&mut inner_buf));
+                inner.start_file("fabric.mod.json", zip::write::FileOptions::default()).unwrap();
+                inner.write_all(br#"{"id":"fabric-key-binding-api-v1","name":"Key Binding API"}"#).unwrap();
+                inner.finish().unwrap();
+            }
+
+            let file = File::create(&temp_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            zip.start_file("fabric.mod.json", zip::write::FileOptions::default()).unwrap();
+            zip.write_all(br#"{"id":"fabric-api","name":"Fabric API","provides":["fabric"]}"#).unwrap();
+            zip.start_file("META-INF/jars/fabric-key-binding-api-v1.jar", zip::write::FileOptions::default()).unwrap();
+            zip.write_all(&inner_buf).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let rel = read_mod_relations(&temp_path).expect("relations");
+        assert_eq!(rel.id, "fabric-api");
+        assert!(rel.provides.contains(&"fabric".to_string()));
+        assert!(
+            rel.provides.contains(&"fabric-key-binding-api-v1".to_string()),
+            "nested module id should be folded into provides, got {:?}",
+            rel.provides
+        );
 
         let _ = fs::remove_file(temp_path);
     }

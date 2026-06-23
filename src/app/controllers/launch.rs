@@ -54,6 +54,21 @@ pub fn copy_crash_details(
     }
 }
 
+/// Force-quit the running game, if any. The launcher publishes the live PID into
+/// `state.running_pid` while the process is alive; killing it makes `child.wait()`
+/// return, which tears down the launch flow normally (clearing the slot).
+pub fn stop_game(state: &AppState) {
+    let pid = *state.running_pid.lock().unwrap();
+    if let Some(pid) = pid {
+        let spid = sysinfo::Pid::from_u32(pid);
+        let mut sys = sysinfo::System::new();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[spid]), true);
+        if let Some(proc) = sys.process(spid) {
+            proc.kill();
+        }
+    }
+}
+
 /// Copy the full game log to the system clipboard.
 pub fn copy_logs(state: &AppState) {
     let text = state.log_buf.lock().unwrap().join("\n");
@@ -169,7 +184,7 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
         let play_start = std::time::Instant::now();
         let launcher = Launcher::new(config.clone());
         let result = launcher
-            .launch_with_logs(&instance, &account, Some(log_tx))
+            .launch_with_logs(&instance, &account, Some(log_tx), Some(state.running_pid.clone()))
             .await;
 
         let _ = consumer.join();

@@ -417,14 +417,17 @@ impl Launcher {
     }
 
     pub async fn launch(&self, instance: &crate::core::instance::Instance, account: &Account) -> Result<(), String> {
-        self.launch_with_logs(instance, account, None).await
+        self.launch_with_logs(instance, account, None, None).await
     }
 
     pub async fn launch_with_logs(
-        &self, 
-        instance: &crate::core::instance::Instance, 
+        &self,
+        instance: &crate::core::instance::Instance,
         account: &Account,
-        log_tx: Option<tokio::sync::mpsc::Sender<String>>
+        log_tx: Option<tokio::sync::mpsc::Sender<String>>,
+        // Slot the live game process's PID is published into once it spawns (and
+        // cleared once it exits), so callers can force-quit it. `None` to opt out.
+        pid_slot: Option<std::sync::Arc<std::sync::Mutex<Option<u32>>>>,
     ) -> Result<(), String> {
         let interpolate = |cmd_str: &str| -> String {
             cmd_str
@@ -461,6 +464,10 @@ impl Launcher {
             let mut child = cmd.spawn()
                 .map_err(|e| format!("Failed to spawn Java process: {}. Is Java installed and configured correctly?", e))?;
 
+            if let Some(ref slot) = pid_slot {
+                *slot.lock().unwrap() = Some(child.id());
+            }
+
             let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
             let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
@@ -481,7 +488,11 @@ impl Launcher {
                 }
             });
 
-            child.wait()
+            let wait_result = child.wait();
+            if let Some(ref slot) = pid_slot {
+                *slot.lock().unwrap() = None;
+            }
+            wait_result
                 .map_err(|e| format!("Minecraft game process error: {}", e))?
         } else {
             // Redirect stdout/stderr to parent process so standard terminal logging works
