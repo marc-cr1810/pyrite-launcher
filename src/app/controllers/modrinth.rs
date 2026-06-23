@@ -14,7 +14,7 @@ use crate::app::avatars::AvatarEntry;
 use crate::app::controllers::{details, instances};
 use crate::app::state::AppState;
 use crate::app::{convert, ui};
-use crate::core::api::{ApiClient, ModrinthSearchHit};
+use crate::core::api::{ApiClient, ModrinthSearchHit, ModrinthVersion};
 use crate::core::downloader::ProgressUpdate;
 use crate::core::instance::Instance;
 use crate::{Logic, MainWindow};
@@ -214,12 +214,88 @@ pub fn install(
 
         match result {
             Ok(_) => {
-                set_status(&weak, format!("Installed {}.", file.filename));
+                // Compatibility gate: a mod's required dependencies must be present
+                // too, or it'll crash on load. Pull in any that aren't installed.
+                let mut msg = format!("Installed {}.", file.filename);
+                if kind == "mod" {
+                    let deps = install_required_deps(
+                        &mut inst,
+                        &game_dir,
+                        &version,
+                        &game_version,
+                        loader.as_deref(),
+                        &weak,
+                    )
+                    .await;
+                    if !deps.is_empty() {
+                        msg = format!(
+                            "Installed {} (+ {} dependenc{}: {}).",
+                            file.filename,
+                            deps.len(),
+                            if deps.len() == 1 { "y" } else { "ies" },
+                            deps.join(", "),
+                        );
+                    }
+                }
+                set_status(&weak, msg);
                 details::load(&state, &weak, instance_id);
             }
             Err(e) => set_status(&weak, format!("Install failed: {e}")),
         }
     });
+}
+
+/// Resolve and install a mod version's *required* dependencies that aren't
+/// already present in the instance, scoped to its game version + loader. Returns
+/// the filenames installed. One level deep — covers the common "needs Fabric
+/// API / a config lib" case without pulling an unbounded dependency tree.
+async fn install_required_deps(
+    inst: &mut Instance,
+    game_dir: &std::path::Path,
+    version: &ModrinthVersion,
+    game_version: &str,
+    loader: Option<&str>,
+    weak: &Weak<MainWindow>,
+) -> Vec<String> {
+    let api = ApiClient::new();
+    let mods_dir = inst.path.join("mods");
+    let mut installed = Vec::new();
+
+    for dep in &version.dependencies {
+        if dep.dependency_type != "required" {
+            continue;
+        }
+        let Some(project_id) = dep.project_id.clone() else { continue };
+
+        // Newest dependency version compatible with this instance.
+        let Ok(versions) = api.fetch_modpack_versions(&project_id).await else { continue };
+        let chosen = versions.into_iter().find(|v| {
+            v.game_versions.iter().any(|g| g == game_version)
+                && loader.map_or(true, |l| v.loaders.iter().any(|x| x.eq_ignore_ascii_case(l)))
+        });
+        let Some(v) = chosen else { continue };
+        let Some(f) = v.files.iter().find(|f| f.primary).or_else(|| v.files.first()).cloned() else {
+            continue;
+        };
+
+        // Already satisfied? Skip (matches either the enabled or disabled jar).
+        if mods_dir.join(&f.filename).exists()
+            || mods_dir.join(format!("{}.disabled", f.filename)).exists()
+        {
+            continue;
+        }
+
+        set_status(weak, format!("Installing dependency {}…", f.filename));
+        if inst
+            .install_mod_from_url(game_dir, &f.filename, &f.url, f.hashes.sha1.as_deref(), true)
+            .await
+            .is_ok()
+        {
+            installed.push(f.filename);
+        }
+    }
+
+    installed
 }
 
 /// Create a new instance from a Modrinth modpack: download its latest `.mrpack`,

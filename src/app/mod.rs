@@ -94,7 +94,45 @@ pub fn run() -> Result<(), slint::PlatformError> {
         });
     }
 
+    // Poll the running game's resource usage once a second and publish it into
+    // the Play view's live stats. Cheap no-op while nothing is running.
+    let resource_timer = slint::Timer::default();
+    {
+        let weak = window.as_weak();
+        let running_pid = state.running_pid.clone();
+        let cores = std::thread::available_parallelism().map(|n| n.get() as f32).unwrap_or(1.0);
+        let mut sys = sysinfo::System::new();
+        resource_timer.start(slint::TimerMode::Repeated, Duration::from_millis(1000), move || {
+            let Some(pid) = *running_pid.lock().unwrap() else { return };
+            let Some(ui) = weak.upgrade() else { return };
+            let spid = sysinfo::Pid::from_u32(pid);
+            // Must refresh `All`: sysinfo only computes per-process CPU usage on a
+            // full refresh (`Some(..)` updates memory but leaves cpu_usage at 0).
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+            let logic = ui.global::<Logic>();
+            if let Some(proc) = sys.process(spid) {
+                let mem_mb = proc.memory() as f32 / (1024.0 * 1024.0);
+                let cpu = (proc.cpu_usage() / cores).clamp(0.0, 100.0);
+                logic.set_game_mem_mb(mem_mb);
+                logic.set_game_cpu_pct(cpu.round() as i32);
+                logic.set_game_uptime(format_uptime(proc.run_time()).into());
+            }
+        });
+    }
+
     window.run()
+}
+
+/// Format a process run-time (seconds) as "mm:ss", or "h:mm:ss" past an hour.
+fn format_uptime(secs: u64) -> String {
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 
 /// Resolve the theme to use at startup: the persisted choice if it still exists,

@@ -27,6 +27,49 @@ pub struct Downloader {
     concurrency: usize,
 }
 
+/// Result of a check-only pass over an instance's game files. Counts files that
+/// are missing or fail their SHA-1, so the caller can decide whether to repair
+/// (re-download) and report exactly what was wrong.
+#[derive(Default, Debug, Clone)]
+pub struct VerifyReport {
+    /// The client JAR is missing or corrupt.
+    pub bad_client: bool,
+    /// Number of library/native jars missing or corrupt.
+    pub bad_libraries: usize,
+    /// Number of asset objects missing or corrupt (includes a missing/unreadable
+    /// asset index, counted as one).
+    pub missing_assets: usize,
+    /// Total asset objects examined (0 if the index couldn't be read).
+    pub total_assets: usize,
+}
+
+impl VerifyReport {
+    /// Total number of problem files found across all categories.
+    pub fn total_bad(&self) -> usize {
+        self.bad_client as usize + self.bad_libraries + self.missing_assets
+    }
+
+    /// True when nothing needs repairing.
+    pub fn is_ok(&self) -> bool {
+        self.total_bad() == 0
+    }
+
+    /// A short human summary like "client JAR, 3 libraries, 12 assets".
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if self.bad_client {
+            parts.push("client JAR".to_string());
+        }
+        if self.bad_libraries > 0 {
+            parts.push(format!("{} librar{}", self.bad_libraries, if self.bad_libraries == 1 { "y" } else { "ies" }));
+        }
+        if self.missing_assets > 0 {
+            parts.push(format!("{} asset{}", self.missing_assets, if self.missing_assets == 1 { "" } else { "s" }));
+        }
+        parts.join(", ")
+    }
+}
+
 impl Downloader {
     pub fn new(progress_tx: Sender<ProgressUpdate>) -> Self {
         Self::with_concurrency(progress_tx, crate::core::config::default_download_concurrency())
@@ -141,6 +184,105 @@ impl Downloader {
             io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+
+    /// Check-only counterpart of [`download_version`]: re-hash the client JAR,
+    /// libraries, and assets that *should* be present and report what's missing
+    /// or corrupt, without touching the network. Recurses into `inheritsFrom`
+    /// parents (Fabric/Forge profiles) just like the downloader does.
+    pub fn verify_version(game_dir: &Path, version_details: &VersionDetails) -> VerifyReport {
+        let mut report = VerifyReport::default();
+        let version_id = version_details.id();
+        let version_dir = game_dir.join("versions").join(&version_id);
+
+        // Verify the parent profile first when this is a modded (inherited) one.
+        if let Some(ref parent_id) = version_details.inheritsFrom {
+            let parent_json = game_dir
+                .join("versions")
+                .join(parent_id)
+                .join(format!("{parent_id}.json"));
+            if let Ok(content) = fs::read_to_string(&parent_json)
+                && let Ok(parent) = serde_json::from_str::<VersionDetails>(&content)
+            {
+                let pr = Self::verify_version(game_dir, &parent);
+                report.bad_client |= pr.bad_client;
+                report.bad_libraries += pr.bad_libraries;
+                report.missing_assets += pr.missing_assets;
+                report.total_assets += pr.total_assets;
+            }
+        }
+
+        // 1. Client JAR.
+        if let Some(ref downloads) = version_details.downloads {
+            let client_jar = version_dir.join(format!("{version_id}.jar"));
+            if !Self::verify_sha1(&client_jar, &downloads.client.sha1) {
+                report.bad_client = true;
+            }
+        }
+
+        // 2. Libraries (and native classifiers), filtered by the same OS rules
+        //    the downloader applies.
+        let libraries_dir = game_dir.join("libraries");
+        let current_os = if cfg!(target_os = "windows") {
+            "windows"
+        } else if cfg!(target_os = "macos") {
+            "osx"
+        } else if cfg!(target_os = "linux") {
+            "linux"
+        } else {
+            "unknown"
+        };
+        for lib in &version_details.libraries {
+            if let Some(ref rules) = lib.rules
+                && !Rule::evaluate(rules)
+            {
+                continue;
+            }
+            if let Some(art) = lib.get_artifact()
+                && !art.sha1.is_empty()
+                && !Self::verify_sha1(&libraries_dir.join(&art.path), &art.sha1)
+            {
+                report.bad_libraries += 1;
+            }
+            if let Some(ref natives_map) = lib.natives
+                && let Some(classifier) = natives_map.get(current_os)
+                && let Some(ref downloads) = lib.downloads
+                && let Some(ref classifiers) = downloads.classifiers
+                && let Some(art) = classifiers.get(classifier)
+                && !art.sha1.is_empty()
+                && !Self::verify_sha1(&libraries_dir.join(&art.path), &art.sha1)
+            {
+                report.bad_libraries += 1;
+            }
+        }
+
+        // 3. Assets. A missing/unreadable index counts as one problem (repair
+        //    re-fetches it and everything under it).
+        if let Some(ref asset_index_ref) = version_details.assetIndex {
+            let index_path = game_dir
+                .join("assets")
+                .join("indexes")
+                .join(format!("{}.json", asset_index_ref.id));
+            match fs::read_to_string(&index_path)
+                .ok()
+                .and_then(|c| serde_json::from_str::<AssetIndex>(&c).ok())
+            {
+                Some(asset_index) => {
+                    let objects_dir = game_dir.join("assets").join("objects");
+                    for obj in asset_index.objects.values() {
+                        report.total_assets += 1;
+                        let first_two = &obj.hash[0..2];
+                        let path = objects_dir.join(first_two).join(&obj.hash);
+                        if !Self::verify_sha1(&path, &obj.hash) {
+                            report.missing_assets += 1;
+                        }
+                    }
+                }
+                None => report.missing_assets += 1,
+            }
+        }
+
+        report
     }
 
     pub async fn download_version(&self, game_dir: &Path, version_details: &VersionDetails) -> Result<(), String> {

@@ -496,6 +496,27 @@ export component InstancesView inherits Rectangle {
                             }
                         }
 
+                        Text { text: "Game files"; color: Theme.text-muted; font-size: 12px; }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            VerticalLayout {
+                                alignment: center;
+                                PButton {
+                                    text: "Verify & repair";
+                                    enabled: !Logic.is-busy;
+                                    clicked => { Logic.verify-repair-files(root.selected-id); }
+                                }
+                            }
+                            Text {
+                                text: Logic.repair-status != ""
+                                    ? Logic.repair-status
+                                    : "Re-check the client, libraries, and assets; re-download anything missing or corrupt.";
+                                color: Logic.repair-status != "" ? Theme.text-muted : Theme.text-dim;
+                                font-size: 11px; wrap: word-wrap;
+                                horizontal-stretch: 1; vertical-alignment: center;
+                            }
+                        }
+
                         HorizontalLayout {
                             spacing: 10px;
                             padding-top: 4px;

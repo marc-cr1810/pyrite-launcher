@@ -120,6 +120,13 @@ pub fn play(state: &AppState, weak: &Weak<MainWindow>) {
             }
         };
 
+        // Publish the memory ceiling now so the live resource strip can show
+        // "used / max" as soon as the game starts.
+        let max_mb = xmx_mb(&instance, &config);
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui.global::<Logic>().set_game_mem_max_mb(max_mb);
+        });
+
         // Refresh the Microsoft session if its token has expired, so launches
         // don't silently fail with stale credentials.
         status(&weak, "Checking account session…");
@@ -266,6 +273,17 @@ async fn download_version_files(
     version_id: &str,
     weak: &Weak<MainWindow>,
 ) -> Result<(), String> {
+    let details = resolve_version_details(config, version_id).await?;
+    download_resolved(config, &details, weak).await
+}
+
+/// Resolve a version's full details (from local JSON, or by fetching the
+/// appropriate Mojang/Fabric/Forge/NeoForge profile) and persist them to disk.
+/// Shared by the launch flow and the verify-and-repair flow.
+pub(crate) async fn resolve_version_details(
+    config: &Config,
+    version_id: &str,
+) -> Result<crate::core::api::VersionDetails, String> {
     let api = ApiClient::new();
     let json_path = config
         .game_dir
@@ -302,6 +320,17 @@ async fn download_version_files(
         std::fs::write(&json_path, content).map_err(|e| e.to_string())?;
     }
 
+    Ok(details)
+}
+
+/// Download every file referenced by already-resolved version details, streaming
+/// progress into the UI. `download_file` skips anything already present and
+/// valid, so this doubles as the repair step (re-fetching only bad files).
+pub(crate) async fn download_resolved(
+    config: &Config,
+    details: &crate::core::api::VersionDetails,
+    weak: &Weak<MainWindow>,
+) -> Result<(), String> {
     let (tx, mut rx) = mpsc::channel::<ProgressUpdate>(100);
     let downloader = Downloader::with_concurrency(tx, config.download_concurrency);
     let game_dir = config.game_dir.clone();
@@ -364,7 +393,41 @@ fn finish(state: &AppState, weak: &Weak<MainWindow>) {
     *state.busy.lock().unwrap() = false;
     set_busy(weak, false);
     ui::progress_async(weak, false, 0.0);
-    let _ = weak.upgrade_in_event_loop(|ui| ui.global::<Logic>().set_game_running(false));
+    let _ = weak.upgrade_in_event_loop(|ui| {
+        let logic = ui.global::<Logic>();
+        logic.set_game_running(false);
+        // Clear the live resource strip now that the game is gone.
+        logic.set_game_mem_mb(0.0);
+        logic.set_game_cpu_pct(0);
+        logic.set_game_uptime("".into());
+    });
+}
+
+/// The effective `-Xmx` ceiling in MB for an instance, preferring its own JVM
+/// args and falling back to the global config; 0 when none is set.
+fn xmx_mb(instance: &crate::core::instance::Instance, config: &Config) -> f32 {
+    let from = |args: &[String]| -> Option<f32> {
+        args.iter().find_map(|a| a.strip_prefix("-Xmx").map(parse_mem_mb))
+    };
+    instance
+        .config
+        .jvm_args
+        .as_deref()
+        .and_then(from)
+        .or_else(|| from(&config.jvm_args))
+        .unwrap_or(0.0)
+}
+
+/// Parse a JVM memory size like "2G", "4096M", "512000K" into MB.
+fn parse_mem_mb(s: &str) -> f32 {
+    let s = s.trim();
+    let (num, mult) = match s.chars().last() {
+        Some('g') | Some('G') => (&s[..s.len() - 1], 1024.0),
+        Some('m') | Some('M') => (&s[..s.len() - 1], 1.0),
+        Some('k') | Some('K') => (&s[..s.len() - 1], 1.0 / 1024.0),
+        _ => (s, 1.0 / (1024.0 * 1024.0)), // bare bytes
+    };
+    num.trim().parse::<f32>().map(|n| n * mult).unwrap_or(0.0)
 }
 
 fn set_busy(weak: &Weak<MainWindow>, busy: bool) {

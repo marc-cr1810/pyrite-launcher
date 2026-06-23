@@ -9,6 +9,7 @@ pub mod launch;
 pub mod modrinth;
 pub mod modupdate;
 pub mod preflight;
+pub mod repair;
 pub mod settings;
 pub mod storage;
 pub mod versions;
@@ -282,6 +283,12 @@ pub fn wire(ui: &MainWindow, state: &AppState) {
                 loader_version.to_string(),
             );
         });
+    }
+
+    {
+        let st = state.clone();
+        let weak = ui.as_weak();
+        logic.on_verify_repair_files(move |id| repair::verify_and_repair(&st, &weak, id.to_string()));
     }
 
     // --- Modrinth ---

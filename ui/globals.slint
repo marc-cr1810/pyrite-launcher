@@ -429,6 +429,11 @@ export global Logic {
     // --- Launch / progress / logs ---
     in property <bool> is-busy;
     in property <bool> game-running; // the game process is live (vs. preparing)
+    // Live resource usage of the running game, polled while game-running.
+    in property <float> game-mem-mb;      // current resident memory, MB
+    in property <float> game-mem-max-mb;  // -Xmx ceiling, MB (0 = unknown)
+    in property <int> game-cpu-pct;       // CPU share across all cores, 0..100
+    in property <string> game-uptime;     // formatted session uptime ("mm:ss")
     in property <string> status-text;
     in property <bool> progress-active;
     in property <bool> progress-indeterminate; // animated sweep for phases with no measurable progress
@@ -501,4 +506,9 @@ export global Logic {
     callback check-mod-updates(string /* id */);
     callback update-mod(string /* id */, string /* filename */);
     callback update-all-mods(string /* id */);
+
+    // --- File integrity: verify the instance's game files and repair any that
+    // are missing or corrupt. `repair-status` carries inline progress/results. ---
+    in property <string> repair-status;
+    callback verify-repair-files(string /* id */);
 }

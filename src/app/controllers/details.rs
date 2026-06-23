@@ -65,6 +65,8 @@ fn populate(ui: &MainWindow, state: &AppState, id: &str) {
     logic.set_inst_backups(convert::backups_model(&inst.path, &backups));
     logic.set_inst_supports_mods(loader.is_some());
     logic.set_inst_supports_shaders(assets::detect_shader_support(&inst.path));
+    // Clear any stale verify/repair result from a previously-open instance.
+    logic.set_repair_status("".into());
 }
 
 /// (Re)load the content lists for an instance. Safe to call from any thread.

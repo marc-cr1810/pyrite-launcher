@@ -100,6 +100,15 @@ component SelectorPopup inherits PopupWindow {
     }
 }
 
+// One labelled figure in the live resource strip (e.g. "CPU" / "42%").
+component StatChip inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: 1px;
+    Text { text: root.label; color: Theme.text-dim; font-size: 10px; font-weight: 600; }
+    Text { text: root.value; color: Theme.text; font-size: 14px; font-weight: 700; }
+}
+
 export component PlayView inherits VerticalLayout {
     padding: 24px;
     spacing: 20px;
@@ -406,6 +415,100 @@ export component PlayView inherits VerticalLayout {
                     }
                     PButton { text: "Copy details"; ghost: true; height: 28px; clicked => { Logic.copy-crash-details(); } }
                     Rectangle { horizontal-stretch: 1; }
+                }
+            }
+        }
+    }
+
+    // ---- Live resource strip (only while the game is running) ----
+    if Logic.game-running : strip := Rectangle {
+        vertical-stretch: 0;
+        border-radius: Theme.radius-sm;
+        background: Theme.surface-alt;
+        border-width: 1px;
+        border-color: Theme.border;
+        // Fill fraction of the -Xmx ceiling, and a usage-tiered colour.
+        property <float> mem-frac: Logic.game-mem-max-mb > 0
+            ? clamp(Logic.game-mem-mb / Logic.game-mem-max-mb, 0, 1) : 0;
+        property <color> mem-color: strip.mem-frac > 0.9 ? Theme.error
+            : strip.mem-frac > 0.75 ? Theme.warning : Theme.success;
+
+        VerticalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-top: 10px;
+            padding-bottom: 12px;
+            spacing: 9px;
+
+            // Top row: status + CPU + uptime.
+            HorizontalLayout {
+                spacing: 24px;
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.success; }
+                        }
+                        Text {
+                            text: "Running"; color: Theme.text; font-size: 14px; font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                StatChip { label: "CPU"; value: "\{Logic.game-cpu-pct}%"; }
+                StatChip { label: "Uptime"; value: Logic.game-uptime == "" ? "0:00" : Logic.game-uptime; }
+            }
+
+            // Memory row with a usage bar (only when the ceiling is known).
+            if Logic.game-mem-max-mb > 0 : VerticalLayout {
+                spacing: 5px;
+                HorizontalLayout {
+                    Text {
+                        text: "Memory"; color: Theme.text-dim; font-size: 11px; font-weight: 600;
+                        horizontal-stretch: 1; vertical-alignment: center;
+                    }
+                    Text {
+                        text: "\{round(Logic.game-mem-mb / 1024 * 10) / 10} / \{round(Logic.game-mem-max-mb / 1024 * 10) / 10} GB";
+                        color: Theme.text; font-size: 12px; font-weight: 700; vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    track := Rectangle {
+                        horizontal-stretch: 1;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: Theme.surface;
+                        clip: true;
+                        Rectangle {
+                            x: 0;
+                            width: track.width * strip.mem-frac;
+                            height: parent.height;
+                            border-radius: 4px;
+                            background: strip.mem-color;
+                            animate width { duration: 300ms; easing: ease-out; }
+                            animate background { duration: 300ms; }
+                        }
+                    }
+                    Text {
+                        text: "\{round(strip.mem-frac * 100)}%"; color: Theme.text-muted;
+                        font-size: 11px; font-weight: 600; vertical-alignment: center; min-width: 34px;
+                    }
+                }
+            }
+
+            // Fallback when we couldn't determine the -Xmx ceiling.
+            if Logic.game-mem-max-mb <= 0 : HorizontalLayout {
+                Text {
+                    text: "Memory"; color: Theme.text-dim; font-size: 11px; font-weight: 600;
+                    horizontal-stretch: 1; vertical-alignment: center;
+                }
+                Text {
+                    text: "\{round(Logic.game-mem-mb / 1024 * 10) / 10} GB";
+                    color: Theme.text; font-size: 12px; font-weight: 700; vertical-alignment: center;
                 }
             }
         }
