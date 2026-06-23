@@ -113,12 +113,15 @@ export component PlayView inherits VerticalLayout {
             padding: 20px;
             spacing: 16px;
 
-            // Instance identity — click to switch instances. A bare Rectangle
-            // doesn't adopt its child layout's size, so bind the width to the
-            // inner content; that keeps the caret hugging the name.
+            // Instance identity — click to switch instances. Stretches to own
+            // the gap before the controls, but is capped at its content width so
+            // the hover highlight hugs the content; the min-width + elide let it
+            // give up space (rather than clip the Play button) when the window
+            // narrows.
             inst-trigger := Rectangle {
-                horizontal-stretch: 0;
-                width: inst-inner.preferred-width;
+                horizontal-stretch: 1;
+                max-width: inst-inner.preferred-width;
+                min-width: 150px;
                 border-radius: Theme.radius-sm;
                 background: inst-touch.has-hover ? Theme.surface-hover : transparent;
                 animate background { duration: 100ms; }
@@ -141,11 +144,13 @@ export component PlayView inherits VerticalLayout {
                     VerticalLayout {
                         alignment: center;
                         spacing: 6px;
+                        horizontal-stretch: 1;
                         Text {
                             text: Logic.active-instance-name == "" ? "No instance selected" : Logic.active-instance-name;
                             color: Theme.text;
                             font-size: 22px;
                             font-weight: 700;
+                            overflow: elide;
                         }
                         HorizontalLayout {
                             spacing: 10px;
@@ -158,6 +163,28 @@ export component PlayView inherits VerticalLayout {
                             }
                             if Logic.active-instance-loader != "" : LoaderBadge {
                                 loader: Logic.active-instance-loader;
+                            }
+                        }
+                        // Playtime stats live with the identity instead of
+                        // floating in the middle of the card.
+                        if Logic.active-instance-name != "" : HorizontalLayout {
+                            spacing: 14px;
+                            alignment: start;
+                            HorizontalLayout {
+                                spacing: 6px;
+                                Icon { icon: Icons.clock; color: Theme.text-dim; font-size: 13px; }
+                                Text {
+                                    text: Logic.active-instance-last-played == "" ? "Never" : Logic.active-instance-last-played;
+                                    color: Theme.text-muted; font-size: 13px; vertical-alignment: center;
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                Icon { icon: Icons.timer; color: Theme.text-dim; font-size: 13px; }
+                                Text {
+                                    text: Logic.active-instance-playtime == "" ? "—" : Logic.active-instance-playtime;
+                                    color: Theme.text-muted; font-size: 13px; vertical-alignment: center;
+                                }
                             }
                         }
                     }
@@ -178,40 +205,16 @@ export component PlayView inherits VerticalLayout {
                 }
             }
 
-            // At-a-glance playtime stats, sitting alongside the identity (only
-            // meaningful with an instance selected).
-            if Logic.active-instance-name != "" : VerticalLayout {
-                alignment: center;
-                spacing: 8px;
-                horizontal-stretch: 0;
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    Icon { icon: Icons.clock; color: Theme.text-dim; font-size: 13px; }
-                    Text {
-                        text: Logic.active-instance-last-played == "" ? "Never" : Logic.active-instance-last-played;
-                        color: Theme.text-muted; font-size: 13px; vertical-alignment: center;
-                    }
-                }
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-                    Icon { icon: Icons.timer; color: Theme.text-dim; font-size: 13px; }
-                    Text {
-                        text: Logic.active-instance-playtime == "" ? "—" : Logic.active-instance-playtime;
-                        color: Theme.text-muted; font-size: 13px; vertical-alignment: center;
-                    }
-                }
-            }
-
-            // Push the account + Play controls to the right edge.
+            // Flexible gap that soaks up surplus width (both triggers are capped
+            // at their content width, so it gets everything left over).
             Rectangle { horizontal-stretch: 1; }
 
-            // Account — click to switch accounts. Width bound to its content for
-            // the same reason as the instance trigger.
+            // Account — click to switch accounts. Capped at content width like
+            // the instance trigger, but shrinkable so it yields before Play does.
             acc-trigger := Rectangle {
-                horizontal-stretch: 0;
-                width: acc-inner.preferred-width;
+                horizontal-stretch: 1;
+                max-width: acc-inner.preferred-width;
+                min-width: 130px;
                 border-radius: Theme.radius-sm;
                 background: acc-touch.has-hover ? Theme.surface-hover : Theme.surface-alt;
                 border-width: 1px;
